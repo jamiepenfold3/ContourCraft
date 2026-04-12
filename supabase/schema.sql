@@ -1,0 +1,277 @@
+create extension if not exists pgcrypto;
+
+create table if not exists public.profiles (
+  id uuid primary key references auth.users(id) on delete cascade,
+  email text not null,
+  full_name text not null,
+  role text not null check (role in ('creator', 'viewer')) default 'viewer',
+  wild_camping_access boolean not null default false,
+  created_at timestamptz not null default now()
+);
+
+create or replace function public.handle_new_user()
+returns trigger
+language plpgsql
+security definer
+as $$
+begin
+  insert into public.profiles (id, email, full_name, role, wild_camping_access)
+  values (
+    new.id,
+    new.email,
+    coalesce(new.raw_user_meta_data ->> 'full_name', split_part(new.email, '@', 1)),
+    'viewer',
+    false
+  )
+  on conflict (id) do update
+  set email = excluded.email,
+      full_name = excluded.full_name;
+  return new;
+end;
+$$;
+
+drop trigger if exists on_auth_user_created on auth.users;
+create trigger on_auth_user_created
+after insert on auth.users
+for each row execute procedure public.handle_new_user();
+
+create table if not exists public.places (
+  id uuid primary key default gen_random_uuid(),
+  title text not null,
+  location_name text not null,
+  lat numeric not null,
+  lng numeric not null,
+  place_type text not null check (place_type in ('wild-camping', 'camping', 'non-camping')),
+  contact_email text,
+  tags text[] not null default '{}',
+  about text not null,
+  need_to_knows text not null,
+  created_by uuid not null references public.profiles(id) on delete cascade,
+  recommend_count integer not null default 0,
+  created_at timestamptz not null default now()
+);
+
+create table if not exists public.place_categories (
+  id uuid primary key default gen_random_uuid(),
+  place_id uuid not null references public.places(id) on delete cascade,
+  key text not null check (key in ('campsite', 'accommodation', 'trails', 'food', 'wineries', 'swim', 'strava')),
+  heading text not null,
+  description text not null,
+  heading_photo_name text,
+  heading_photo_url text,
+  gallery jsonb not null default '[]'::jsonb,
+  strava jsonb
+);
+
+create table if not exists public.place_comments (
+  id uuid primary key default gen_random_uuid(),
+  place_id uuid not null references public.places(id) on delete cascade,
+  name text not null,
+  email text not null,
+  message text not null,
+  created_at timestamptz not null default now()
+);
+
+create table if not exists public.analytics_events (
+  id uuid primary key default gen_random_uuid(),
+  event_type text not null,
+  visitor_role text not null,
+  place_id uuid references public.places(id) on delete set null,
+  section text,
+  photo_count integer not null default 0,
+  created_at timestamptz not null default now()
+);
+
+create table if not exists public.place_favourites (
+  user_id uuid not null references public.profiles(id) on delete cascade,
+  place_id uuid not null references public.places(id) on delete cascade,
+  created_at timestamptz not null default now(),
+  primary key (user_id, place_id)
+);
+
+create or replace function public.increment_place_recommendation(target_place_id uuid)
+returns void
+language sql
+security definer
+as $$
+  update public.places
+  set recommend_count = recommend_count + 1
+  where id = target_place_id;
+$$;
+
+alter table public.profiles enable row level security;
+alter table public.places enable row level security;
+alter table public.place_categories enable row level security;
+alter table public.place_comments enable row level security;
+alter table public.analytics_events enable row level security;
+alter table public.place_favourites enable row level security;
+
+create policy "profiles selectable by owner"
+on public.profiles for select
+to authenticated
+using (auth.uid() = id);
+
+create policy "profiles insertable by owner"
+on public.profiles for insert
+to authenticated
+with check (auth.uid() = id);
+
+create policy "profiles updatable by owner"
+on public.profiles for update
+to authenticated
+using (auth.uid() = id)
+with check (auth.uid() = id);
+
+create policy "public can view standard places"
+on public.places for select
+using (
+  place_type <> 'wild-camping'
+  or exists (
+    select 1
+    from public.profiles
+    where profiles.id = auth.uid()
+      and (profiles.role = 'creator' or profiles.wild_camping_access = true)
+  )
+);
+
+create policy "creators can insert places"
+on public.places for insert
+to authenticated
+with check (
+  exists (
+    select 1
+    from public.profiles
+    where profiles.id = auth.uid()
+      and profiles.role = 'creator'
+  )
+);
+
+create policy "creators can update own places"
+on public.places for update
+to authenticated
+using (
+  created_by = auth.uid()
+  and exists (
+    select 1 from public.profiles
+    where profiles.id = auth.uid()
+      and profiles.role = 'creator'
+  )
+)
+with check (
+  created_by = auth.uid()
+  and exists (
+    select 1 from public.profiles
+    where profiles.id = auth.uid()
+      and profiles.role = 'creator'
+  )
+);
+
+create policy "creators can delete own places"
+on public.places for delete
+to authenticated
+using (
+  created_by = auth.uid()
+  and exists (
+    select 1 from public.profiles
+    where profiles.id = auth.uid()
+      and profiles.role = 'creator'
+  )
+);
+
+create policy "public can view categories for visible places"
+on public.place_categories for select
+using (
+  exists (
+    select 1
+    from public.places
+    where places.id = place_categories.place_id
+  )
+);
+
+create policy "creators can insert categories"
+on public.place_categories for insert
+to authenticated
+with check (
+  exists (
+    select 1
+    from public.profiles
+    where profiles.id = auth.uid()
+      and profiles.role = 'creator'
+  )
+);
+
+create policy "creators can delete categories for own places"
+on public.place_categories for delete
+to authenticated
+using (
+  exists (
+    select 1
+    from public.places
+    join public.profiles on profiles.id = auth.uid()
+    where places.id = place_categories.place_id
+      and places.created_by = auth.uid()
+      and profiles.role = 'creator'
+  )
+);
+
+alter table if exists public.place_categories
+  drop constraint if exists place_categories_key_check;
+
+alter table if exists public.place_categories
+  add constraint place_categories_key_check
+  check (key in ('campsite', 'accommodation', 'trails', 'food', 'wineries', 'swim', 'strava'));
+
+alter table if exists public.place_categories
+  alter column heading_photo_name drop not null,
+  alter column heading_photo_url drop not null;
+
+create policy "public can view comments"
+on public.place_comments for select
+using (
+  exists (
+    select 1
+    from public.places
+    where places.id = place_comments.place_id
+  )
+);
+
+create policy "public can insert comments"
+on public.place_comments for insert
+with check (
+  exists (
+    select 1
+    from public.places
+    where places.id = place_comments.place_id
+  )
+);
+
+create policy "public can insert analytics"
+on public.analytics_events for insert
+with check (true);
+
+create policy "creators can read analytics"
+on public.analytics_events for select
+to authenticated
+using (
+  exists (
+    select 1
+    from public.profiles
+    where profiles.id = auth.uid()
+      and profiles.role = 'creator'
+  )
+);
+
+create policy "users can view own favourites"
+on public.place_favourites for select
+to authenticated
+using (auth.uid() = user_id);
+
+create policy "users can insert own favourites"
+on public.place_favourites for insert
+to authenticated
+with check (auth.uid() = user_id);
+
+create policy "users can delete own favourites"
+on public.place_favourites for delete
+to authenticated
+using (auth.uid() = user_id);
