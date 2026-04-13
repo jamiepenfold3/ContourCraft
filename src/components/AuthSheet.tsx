@@ -1,32 +1,29 @@
 import { FormEvent, useState } from "react";
 import { AppProfile } from "../types";
 
-type AuthMode = "creator" | "viewer";
-
 type AuthSheetProps = {
   profile: AppProfile | null;
-  onCreatorLogin: (email: string, password: string) => Promise<void>;
-  onViewerLogin: (email: string, password: string) => Promise<void>;
-  onViewerSignUp: (
+  onLogin: (email: string, password: string) => Promise<void>;
+  onSignUp: (
     fullName: string,
     email: string,
     password: string,
+    newsletterOptIn: boolean,
   ) => Promise<void>;
   onLogout: () => Promise<void>;
 };
 
 export function AuthSheet({
   profile,
-  onCreatorLogin,
-  onViewerLogin,
-  onViewerSignUp,
+  onLogin,
+  onSignUp,
   onLogout,
 }: AuthSheetProps) {
-  const [mode, setMode] = useState<AuthMode>("creator");
   const [fullName, setFullName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [isSignUp, setIsSignUp] = useState(false);
+  const [newsletterOptIn, setNewsletterOptIn] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
@@ -36,16 +33,15 @@ export function AuthSheet({
     setIsSubmitting(true);
 
     try {
-      if (mode === "creator") {
-        await onCreatorLogin(email, password);
-      } else if (isSignUp) {
-        await onViewerSignUp(fullName, email, password);
+      if (isSignUp) {
+        await onSignUp(fullName, email, password, newsletterOptIn);
       } else {
-        await onViewerLogin(email, password);
+        await onLogin(email, password);
       }
       setFullName("");
       setEmail("");
       setPassword("");
+      setNewsletterOptIn(false);
     } catch (submitError) {
       setError(submitError instanceof Error ? submitError.message : "Auth failed.");
     } finally {
@@ -78,49 +74,27 @@ export function AuthSheet({
     <form className="auth-card" onSubmit={handleSubmit}>
       <div>
         <p className="eyebrow">Supabase auth</p>
-        <h3>{mode === "creator" ? "Creator / Admin login" : "Wild camping login"}</h3>
+        <h3>{isSignUp ? "Create account" : "Login"}</h3>
       </div>
 
       <div className="auth-toggle-row">
         <button
           type="button"
-          className={`toggle-chip ${mode === "creator" ? "active" : ""}`}
-          onClick={() => {
-            setMode("creator");
-            setIsSignUp(false);
-          }}
+          className={`toggle-chip ${!isSignUp ? "active" : ""}`}
+          onClick={() => setIsSignUp(false)}
         >
-          Creator
+          Login
         </button>
         <button
           type="button"
-          className={`toggle-chip ${mode === "viewer" ? "active" : ""}`}
-          onClick={() => setMode("viewer")}
+          className={`toggle-chip ${isSignUp ? "active" : ""}`}
+          onClick={() => setIsSignUp(true)}
         >
-          Wild Camping Viewer
+          Sign up
         </button>
       </div>
 
-      {mode === "viewer" ? (
-        <div className="auth-toggle-row">
-          <button
-            type="button"
-            className={`toggle-chip ${!isSignUp ? "active" : ""}`}
-            onClick={() => setIsSignUp(false)}
-          >
-            Login
-          </button>
-          <button
-            type="button"
-            className={`toggle-chip ${isSignUp ? "active" : ""}`}
-            onClick={() => setIsSignUp(true)}
-          >
-            Sign up
-          </button>
-        </div>
-      ) : null}
-
-      {mode === "viewer" && isSignUp ? (
+      {isSignUp ? (
         <label>
           Full name
           <input
@@ -151,21 +125,25 @@ export function AuthSheet({
       </label>
 
       <p className="guest-copy">
-        {mode === "creator"
-          ? "Creator accounts must already be approved in Supabase before sign-in."
-          : "Viewer accounts can sign up here. Wild camping remains a paid flag controlled on your Supabase profile."}
+        Everyone logs in here. Creator access and paid wild camping access are controlled on
+        your Supabase profile after the account exists.
       </p>
+
+      {isSignUp ? (
+        <label className="inline-checkbox">
+          <input
+            type="checkbox"
+            checked={newsletterOptIn}
+            onChange={(event) => setNewsletterOptIn(event.target.checked)}
+          />
+          <span>Email me new exciting camp spots</span>
+        </label>
+      ) : null}
 
       {error ? <p className="auth-error">{error}</p> : null}
 
       <button type="submit" className="primary-button" disabled={isSubmitting}>
-        {isSubmitting
-          ? "Working..."
-          : mode === "creator"
-            ? "Login"
-            : isSignUp
-              ? "Create viewer account"
-              : "Login"}
+        {isSubmitting ? "Working..." : isSignUp ? "Create account" : "Login"}
       </button>
     </form>
   );

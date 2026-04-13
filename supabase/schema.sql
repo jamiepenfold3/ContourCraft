@@ -275,3 +275,57 @@ create policy "users can delete own favourites"
 on public.place_favourites for delete
 to authenticated
 using (auth.uid() = user_id);
+
+create table if not exists public.newsletter_subscribers (
+  email text primary key,
+  full_name text not null,
+  source text not null,
+  created_at timestamptz not null default now()
+);
+
+alter table public.newsletter_subscribers enable row level security;
+
+create policy "public can add newsletter subscribers"
+on public.newsletter_subscribers for insert
+with check (true);
+
+create table if not exists public.place_recommendations (
+  place_id uuid not null references public.places(id) on delete cascade,
+  email text not null,
+  created_at timestamptz not null default now(),
+  primary key (place_id, email)
+);
+
+alter table public.place_recommendations enable row level security;
+
+create or replace function public.recommend_place_once(
+  target_place_id uuid,
+  recommender_email text
+)
+returns integer
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  normalized_email text := lower(trim(recommender_email));
+  next_count integer;
+begin
+  if normalized_email = '' then
+    raise exception 'Email is required to recommend.' using errcode = '22023';
+  end if;
+
+  insert into public.place_recommendations (place_id, email)
+  values (target_place_id, normalized_email);
+
+  update public.places
+  set recommend_count = recommend_count + 1
+  where id = target_place_id
+  returning recommend_count into next_count;
+
+  return next_count;
+exception
+  when unique_violation then
+    raise exception 'You have already recommended this place.' using errcode = '23505';
+end;
+$$;

@@ -1,18 +1,19 @@
 import { FormEvent, useState } from "react";
 import { ArrowLeft, Heart, Mail, Share2, ThumbsUp } from "lucide-react";
 import { StravaEmbed } from "./StravaEmbed";
-import { AdventureEvent, CategoryKey } from "../types";
+import { AdventureEvent, AppProfile, CategoryKey } from "../types";
 
 type EventDetailProps = {
   event: AdventureEvent;
+  profile: AppProfile | null;
   onTrackSection: (section: CategoryKey) => void;
   onBack: () => void;
   onShare: () => void;
   onAddComment: (
     eventId: string,
-    comment: { name: string; email: string; message: string },
+    comment: { name: string; email: string; message: string; newsletterOptIn: boolean },
   ) => void;
-  onRecommend: (eventId: string) => void;
+  onRecommend: (eventId: string, email: string) => Promise<void>;
   onToggleFavourite: (eventId: string) => void;
   isFavourited: boolean;
   canFavourite: boolean;
@@ -30,6 +31,7 @@ const sectionLabels: Record<CategoryKey, string> = {
 
 export function EventDetail({
   event,
+  profile,
   onTrackSection,
   onBack,
   onShare,
@@ -42,20 +44,44 @@ export function EventDetail({
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [message, setMessage] = useState("");
+  const [newsletterOptIn, setNewsletterOptIn] = useState(false);
+  const [recommendMessage, setRecommendMessage] = useState<string | null>(null);
 
   const handleCommentSubmit = (submitEvent: FormEvent<HTMLFormElement>) => {
     submitEvent.preventDefault();
-    if (!name.trim() || !email.trim() || !message.trim()) {
+    const commentName = profile?.fullName ?? name.trim();
+    const commentEmail = profile?.email ?? email.trim();
+    if (!commentName || !commentEmail || !message.trim()) {
       return;
     }
     onAddComment(event.id, {
-      name: name.trim(),
-      email: email.trim(),
+      name: commentName,
+      email: commentEmail,
       message: message.trim(),
+      newsletterOptIn,
     });
     setName("");
     setEmail("");
     setMessage("");
+    setNewsletterOptIn(false);
+  };
+
+  const handleRecommendClick = async () => {
+    const recommenderEmail = profile?.email ?? email.trim();
+    if (!recommenderEmail) {
+      setRecommendMessage("You can only recommend if you enter your email below.");
+      return;
+    }
+    setRecommendMessage(null);
+    try {
+      await onRecommend(event.id, recommenderEmail);
+    } catch (recommendError) {
+      setRecommendMessage(
+        recommendError instanceof Error
+          ? recommendError.message
+          : "Could not save your recommendation.",
+      );
+    }
   };
 
   return (
@@ -186,28 +212,33 @@ export function EventDetail({
           <button
             type="button"
             className="ghost-button share-button"
-            onClick={() => onRecommend(event.id)}
+            onClick={handleRecommendClick}
           >
             <ThumbsUp size={16} />
             <span>Recommend {event.recommendCount}</span>
           </button>
         </div>
+        {recommendMessage ? <p className="auth-error">{recommendMessage}</p> : null}
 
         <form className="comment-form" onSubmit={handleCommentSubmit}>
-          <div className="form-grid">
-            <label>
-              Name
-              <input value={name} onChange={(event) => setName(event.target.value)} />
-            </label>
-            <label>
-              Email
-              <input
-                type="email"
-                value={email}
-                onChange={(event) => setEmail(event.target.value)}
-              />
-            </label>
-          </div>
+          {profile ? (
+            <p className="guest-copy">Commenting as {profile.fullName}.</p>
+          ) : (
+            <div className="form-grid">
+              <label>
+                Name
+                <input value={name} onChange={(event) => setName(event.target.value)} />
+              </label>
+              <label>
+                Email
+                <input
+                  type="email"
+                  value={email}
+                  onChange={(event) => setEmail(event.target.value)}
+                />
+              </label>
+            </div>
+          )}
           <label>
             Comment
             <textarea
@@ -215,6 +246,14 @@ export function EventDetail({
               value={message}
               onChange={(event) => setMessage(event.target.value)}
             />
+          </label>
+          <label className="inline-checkbox">
+            <input
+              type="checkbox"
+              checked={newsletterOptIn}
+              onChange={(event) => setNewsletterOptIn(event.target.checked)}
+            />
+            <span>Email me new exciting camp spots</span>
           </label>
           <button type="submit" className="primary-button">
             Add comment

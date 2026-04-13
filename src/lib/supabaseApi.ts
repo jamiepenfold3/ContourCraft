@@ -131,6 +131,23 @@ export async function signUpViewer(
   }
 }
 
+export async function addNewsletterSubscriber(
+  fullName: string,
+  email: string,
+  source: "signup" | "comment",
+) {
+  const client = ensureClient();
+  const { error } = await client.from("newsletter_subscribers").insert({
+    full_name: fullName,
+    email,
+    source,
+  });
+
+  if (error && error.code !== "23505") {
+    throw error;
+  }
+}
+
 export async function signOut() {
   const client = ensureClient();
   const { error } = await client.auth.signOut();
@@ -361,12 +378,19 @@ export async function addComment(
   return mapComment(data);
 }
 
-export async function recommendPlace(placeId: string) {
+export async function recommendPlace(placeId: string, email: string) {
   const client = ensureClient();
-  const { error } = await client.rpc("increment_place_recommendation", {
+  const { data, error } = await client.rpc("recommend_place_once", {
     target_place_id: placeId,
+    recommender_email: email,
   });
-  if (error) throw error;
+  if (error) {
+    if (error.code === "23505") {
+      throw new Error("You have already recommended this place.");
+    }
+    throw error;
+  }
+  return Number(data);
 }
 
 export async function trackEvent(input: {

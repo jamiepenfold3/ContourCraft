@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { RefObject, useEffect, useMemo, useRef, useState } from "react";
 import { AnalyticsPanel } from "./components/AnalyticsPanel";
 import { AuthSheet } from "./components/AuthSheet";
 import { EventDetail } from "./components/EventDetail";
@@ -9,6 +9,7 @@ import { sampleEvents } from "./data/sampleData";
 import {
   addComment,
   addFavourite,
+  addNewsletterSubscriber,
   createPlace,
   deletePlace,
   fetchAnalytics,
@@ -90,11 +91,22 @@ export default function App() {
   const [selectedTag, setSelectedTag] = useState("all");
   const [error, setError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(isSupabaseConfigured);
+  const authSectionRef = useRef<HTMLDivElement | null>(null);
+  const createSectionRef = useRef<HTMLDivElement | null>(null);
+  const manageSectionRef = useRef<HTMLDivElement | null>(null);
+  const analyticsSectionRef = useRef<HTMLDivElement | null>(null);
+  const favouritesSectionRef = useRef<HTMLDivElement | null>(null);
 
   const canCreate = profile?.role === "creator";
   const canAccessAnalytics = profile?.role === "creator";
   const canViewWildCamping =
     profile?.role === "creator" || profile?.wildCampingAccess === true;
+
+  const scrollToSection = (section: RefObject<HTMLDivElement>) => {
+    window.setTimeout(() => {
+      section.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+    }, 0);
+  };
 
   useEffect(() => {
     if (!isSupabaseConfigured) {
@@ -208,6 +220,26 @@ export default function App() {
       );
   }, [canAccessAnalytics, showAnalytics]);
 
+  useEffect(() => {
+    if (showAuth) scrollToSection(authSectionRef);
+  }, [showAuth]);
+
+  useEffect(() => {
+    if (showCreateForm) scrollToSection(createSectionRef);
+  }, [showCreateForm]);
+
+  useEffect(() => {
+    if (showManageEntries) scrollToSection(manageSectionRef);
+  }, [showManageEntries]);
+
+  useEffect(() => {
+    if (showAnalytics && analytics) scrollToSection(analyticsSectionRef);
+  }, [analytics, showAnalytics]);
+
+  useEffect(() => {
+    if (showFavourites) scrollToSection(favouritesSectionRef);
+  }, [showFavourites]);
+
   const visibleEvents = useMemo(
     () =>
       sortEvents(
@@ -262,6 +294,30 @@ export default function App() {
     });
   }, [mapFilteredEvents, searchMode, searchTerm, selectedTag]);
 
+  const activeMapFilterKeys = useMemo(
+    () =>
+      Object.entries(mapFilters)
+        .filter(([, enabled]) => enabled)
+        .map(([key]) => key as CategoryKey),
+    [mapFilters],
+  );
+
+  const getListPreviewPhoto = (event: AdventureEvent) => {
+    const filteredCategory = activeMapFilterKeys
+      .map((key) => event.categories.find((category) => category.key === key && category.headingPhoto))
+      .find(Boolean);
+
+    return (
+      filteredCategory?.headingPhoto ??
+      event.categories.find(
+        (category) =>
+          (category.key === "campsite" || category.key === "accommodation") &&
+          category.headingPhoto,
+      )?.headingPhoto ??
+      event.categories.find((category) => category.headingPhoto)?.headingPhoto
+    );
+  };
+
   const selectedEvent = mapFilteredEvents.find((event) => event.id === selectedEventId) ?? null;
   const editingEvent = events.find((event) => event.id === editingEventId) ?? null;
 
@@ -271,24 +327,24 @@ export default function App() {
     setEvents(sortEvents(places));
   };
 
-  const handleCreatorLogin = async (email: string, password: string) => {
+  const handleLogin = async (email: string, password: string) => {
     await signIn(email, password);
-    void trackEvent({ eventType: "login", visitorRole: "creator" }).catch((trackError) =>
+    void trackEvent({ eventType: "login", visitorRole: "user" }).catch((trackError) =>
       setError(errorMessage(trackError, "Analytics tracking failed.")),
     );
     setShowAuth(false);
   };
 
-  const handleViewerLogin = async (email: string, password: string) => {
-    await signIn(email, password);
-    void trackEvent({ eventType: "login", visitorRole: "viewer" }).catch((trackError) =>
-      setError(errorMessage(trackError, "Analytics tracking failed.")),
-    );
-    setShowAuth(false);
-  };
-
-  const handleViewerSignUp = async (fullName: string, email: string, password: string) => {
+  const handleSignUp = async (
+    fullName: string,
+    email: string,
+    password: string,
+    newsletterOptIn: boolean,
+  ) => {
     await signUpViewer(fullName, email, password);
+    if (newsletterOptIn) {
+      await addNewsletterSubscriber(fullName, email, "signup");
+    }
     setShowAuth(false);
   };
 
@@ -390,6 +446,7 @@ export default function App() {
     }
     if (!canCreate) {
       setShowAuth(true);
+      scrollToSection(authSectionRef);
       return;
     }
     setShowCreateForm(true);
@@ -399,6 +456,7 @@ export default function App() {
     setDraftPoint(null);
     setSelectedEventId(null);
     window.history.replaceState(null, "", `${window.location.pathname}${window.location.search}`);
+    scrollToSection(createSectionRef);
   };
 
   const handleShare = async () => {
@@ -424,11 +482,14 @@ export default function App() {
 
   const handleAddComment = async (
     eventId: string,
-    comment: { name: string; email: string; message: string },
+    comment: { name: string; email: string; message: string; newsletterOptIn: boolean },
   ) => {
     if (!isSupabaseConfigured) {
       setError("Configure Supabase first to save comments for all devices.");
       return;
+    }
+    if (comment.newsletterOptIn) {
+      await addNewsletterSubscriber(comment.name, comment.email, "comment");
     }
     const inserted = await addComment(eventId, comment);
     setEvents((current) =>
@@ -440,16 +501,16 @@ export default function App() {
     );
   };
 
-  const handleRecommend = async (eventId: string) => {
+  const handleRecommend = async (eventId: string, email: string) => {
     if (!isSupabaseConfigured) {
       setError("Configure Supabase first to persist recommendations.");
       return;
     }
-    await recommendPlace(eventId);
+    const nextRecommendCount = await recommendPlace(eventId, email);
     setEvents((current) =>
       current.map((event) =>
         event.id === eventId
-          ? { ...event, recommendCount: event.recommendCount + 1 }
+          ? { ...event, recommendCount: nextRecommendCount }
           : event,
       ),
     );
@@ -458,6 +519,7 @@ export default function App() {
   const handleToggleFavourite = async (eventId: string) => {
     if (!profile) {
       setShowAuth(true);
+      scrollToSection(authSectionRef);
       return;
     }
 
@@ -490,6 +552,7 @@ export default function App() {
                 return;
               }
               setShowAuth((current) => !current);
+              scrollToSection(authSectionRef);
             }}
             onCreateLocation={handleCreateLocation}
             onAnalyticsAction={() => {
@@ -497,6 +560,7 @@ export default function App() {
               setShowCreateForm(false);
               setShowManageEntries(false);
               setShowFavourites(false);
+              scrollToSection(analyticsSectionRef);
             }}
             onManageEntries={() => {
               setShowManageEntries((current) => !current);
@@ -504,6 +568,7 @@ export default function App() {
               setShowAnalytics(false);
               setShowFavourites(false);
               setSelectedEventId(null);
+              scrollToSection(manageSectionRef);
             }}
             onFavouritesAction={() => {
               setShowFavourites((current) => !current);
@@ -511,6 +576,7 @@ export default function App() {
               setShowAnalytics(false);
               setShowManageEntries(false);
               setSelectedEventId(null);
+              scrollToSection(favouritesSectionRef);
             }}
             onLogout={handleLogout}
           />
@@ -527,6 +593,16 @@ export default function App() {
         ) : null}
         {error ? <div className="auth-error">{error}</div> : null}
       </header>
+
+      {isLoading ? (
+        <div className="loading-map-screen" role="status" aria-live="polite">
+          <div className="loading-map-card">
+            <p className="eyebrow">ContourCraft</p>
+            <h2>Loading Map</h2>
+            <p className="guest-copy">Fetching the latest places from Supabase.</p>
+          </div>
+        </div>
+      ) : null}
 
       <main className="layout-grid">
         <section className="map-column">
@@ -609,29 +685,39 @@ export default function App() {
           ) : null}
           {!selectedEvent ? (
             <div className="event-list">
-              {filteredEvents.map((event) => (
-                <button
-                  type="button"
-                  key={event.id}
-                  className="event-list-item"
-                  onClick={() => handleSelectEvent(event.id)}
-                >
-                  <span>{event.title}</span>
-                  <small>
-                    {event.locationName} · {event.placeType}
-                  </small>
-                  {event.tags.length ? (
-                    <div className="tag-row">
-                      {event.tags.map((tag) => (
-                        <span className="tag-pill" key={tag}>
-                          {tag}
-                        </span>
-                      ))}
-                    </div>
-                  ) : null}
-                  <p>{event.needToKnows}</p>
-                </button>
-              ))}
+              {filteredEvents.map((event) => {
+                const previewPhoto = getListPreviewPhoto(event);
+                return (
+                  <button
+                    type="button"
+                    key={event.id}
+                    className="event-list-item"
+                    onClick={() => handleSelectEvent(event.id)}
+                  >
+                    {previewPhoto ? (
+                      <img
+                        className="event-preview-image"
+                        src={previewPhoto.url}
+                        alt={previewPhoto.name}
+                      />
+                    ) : null}
+                    <span>{event.title}</span>
+                    <small>
+                      {event.locationName} · {event.placeType}
+                    </small>
+                    {event.tags.length ? (
+                      <div className="tag-row">
+                        {event.tags.map((tag) => (
+                          <span className="tag-pill" key={tag}>
+                            {tag}
+                          </span>
+                        ))}
+                      </div>
+                    ) : null}
+                    <p>{event.needToKnows}</p>
+                  </button>
+                );
+              })}
               {!filteredEvents.length ? (
                 <section className="panel">
                   <p className="guest-copy">No places matched that search.</p>
@@ -643,18 +729,20 @@ export default function App() {
 
         <section className="content-column">
           {showAuth ? (
-            <AuthSheet
-              profile={profile}
-              onCreatorLogin={handleCreatorLogin}
-              onViewerLogin={handleViewerLogin}
-              onViewerSignUp={handleViewerSignUp}
-              onLogout={handleLogout}
-            />
+            <div ref={authSectionRef}>
+              <AuthSheet
+                profile={profile}
+                onLogin={handleLogin}
+                onSignUp={handleSignUp}
+                onLogout={handleLogout}
+              />
+            </div>
           ) : null}
 
           {selectedEvent ? (
             <EventDetail
               event={selectedEvent}
+              profile={profile}
               onTrackSection={handleTrackSection}
               onBack={handleBackToMap}
               onShare={handleShare}
@@ -667,16 +755,16 @@ export default function App() {
           ) : null}
 
           {showAnalytics && canAccessAnalytics && analytics ? (
-            <>
+            <div ref={analyticsSectionRef} className="section-anchor">
               <button type="button" className="ghost-button back-section-button" onClick={() => setShowAnalytics(false)}>
                 ← Back to map
               </button>
               <AnalyticsPanel analytics={analytics} />
-            </>
+            </div>
           ) : null}
 
           {canCreate && showManageEntries ? (
-            <section className="panel">
+            <section className="panel" ref={manageSectionRef}>
               <button type="button" className="ghost-button back-section-button" onClick={() => setShowManageEntries(false)}>
                 ← Back to map
               </button>
@@ -702,6 +790,7 @@ export default function App() {
                         onClick={() => {
                           setEditingEventId(event.id);
                           setShowCreateForm(true);
+                          scrollToSection(createSectionRef);
                         }}
                       >
                         Edit
@@ -721,7 +810,7 @@ export default function App() {
           ) : null}
 
           {showFavourites ? (
-            <section className="panel">
+            <section className="panel" ref={favouritesSectionRef}>
               <button type="button" className="ghost-button back-section-button" onClick={() => setShowFavourites(false)}>
                 ← Back to map
               </button>
@@ -734,18 +823,28 @@ export default function App() {
               <div className="event-list">
                 {events
                   .filter((event) => favouritePlaceIds.includes(event.id))
-                  .map((event) => (
-                    <button
-                      type="button"
-                      key={event.id}
-                      className="event-list-item"
-                      onClick={() => handleSelectEvent(event.id)}
-                    >
-                      <span>{event.title}</span>
-                      <small>{event.locationName}</small>
-                      <p>{event.needToKnows}</p>
-                    </button>
-                  ))}
+                  .map((event) => {
+                    const previewPhoto = getListPreviewPhoto(event);
+                    return (
+                      <button
+                        type="button"
+                        key={event.id}
+                        className="event-list-item"
+                        onClick={() => handleSelectEvent(event.id)}
+                      >
+                        {previewPhoto ? (
+                          <img
+                            className="event-preview-image"
+                            src={previewPhoto.url}
+                            alt={previewPhoto.name}
+                          />
+                        ) : null}
+                        <span>{event.title}</span>
+                        <small>{event.locationName}</small>
+                        <p>{event.needToKnows}</p>
+                      </button>
+                    );
+                  })}
                 {!favouritePlaceIds.length ? (
                   <p className="guest-copy">No favourited spots yet.</p>
                 ) : null}
@@ -754,24 +853,20 @@ export default function App() {
           ) : null}
 
           {canCreate && showCreateForm ? (
-            <EventForm
-              currentUser={profile!}
-              pickedPoint={draftPoint}
-              initialEvent={editingEvent}
-              onCreateEvent={handleCreateEvent}
-              onUpdateEvent={handleUpdateEvent}
-              onCancel={() => {
-                setShowCreateForm(false);
-                setDraftPoint(null);
-                setEditingEventId(null);
-              }}
-            />
-          ) : null}
-
-          {isLoading ? (
-            <section className="panel">
-              <p className="guest-copy">Loading Supabase data...</p>
-            </section>
+            <div ref={createSectionRef}>
+              <EventForm
+                currentUser={profile!}
+                pickedPoint={draftPoint}
+                initialEvent={editingEvent}
+                onCreateEvent={handleCreateEvent}
+                onUpdateEvent={handleUpdateEvent}
+                onCancel={() => {
+                  setShowCreateForm(false);
+                  setDraftPoint(null);
+                  setEditingEventId(null);
+                }}
+              />
+            </div>
           ) : null}
 
           {!selectedEvent && !showCreateForm && !showAnalytics && !showManageEntries && !showFavourites ? (
