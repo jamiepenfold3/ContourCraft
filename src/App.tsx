@@ -341,11 +341,14 @@ export default function App() {
     password: string,
     newsletterOptIn: boolean,
   ) => {
-    await signUpViewer(fullName, email, password);
+    const result = await signUpViewer(fullName, email, password);
     if (newsletterOptIn) {
       await addNewsletterSubscriber(fullName, email, "signup");
     }
-    setShowAuth(false);
+    if (!result.requiresEmailConfirmation) {
+      setShowAuth(false);
+    }
+    return result;
   };
 
   const handleLogout = async () => {

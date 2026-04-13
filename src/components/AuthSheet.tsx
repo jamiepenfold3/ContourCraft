@@ -9,7 +9,7 @@ type AuthSheetProps = {
     email: string,
     password: string,
     newsletterOptIn: boolean,
-  ) => Promise<void>;
+  ) => Promise<{ requiresEmailConfirmation: boolean }>;
   onLogout: () => Promise<void>;
 };
 
@@ -25,16 +25,25 @@ export function AuthSheet({
   const [isSignUp, setIsSignUp] = useState(false);
   const [newsletterOptIn, setNewsletterOptIn] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     setError(null);
+    setNotice(null);
     setIsSubmitting(true);
 
     try {
       if (isSignUp) {
-        await onSignUp(fullName, email, password, newsletterOptIn);
+        const result = await onSignUp(fullName, email, password, newsletterOptIn);
+        if (result.requiresEmailConfirmation) {
+          setNotice(
+            "You should receive an email from Supabase that says please verify your email. Open that link, then come back here and log in.",
+          );
+        } else {
+          setNotice("Your account has been created. You can now log in.");
+        }
       } else {
         await onLogin(email, password);
       }
@@ -141,6 +150,7 @@ export function AuthSheet({
       ) : null}
 
       {error ? <p className="auth-error">{error}</p> : null}
+      {notice ? <p className="auth-notice">{notice}</p> : null}
 
       <button type="submit" className="primary-button" disabled={isSubmitting}>
         {isSubmitting ? "Working..." : isSignUp ? "Create account" : "Login"}

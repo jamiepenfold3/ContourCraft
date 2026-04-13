@@ -21,6 +21,19 @@ const ensureClient = () => {
   return supabase;
 };
 
+const getAuthRedirectTo = () => {
+  const configuredRedirect = import.meta.env.VITE_AUTH_REDIRECT_URL?.trim();
+  if (configuredRedirect) {
+    return configuredRedirect;
+  }
+
+  if (window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1") {
+    return undefined;
+  }
+
+  return window.location.origin;
+};
+
 const mapProfile = (row: any): AppProfile => ({
   id: row.id,
   email: row.email ?? "",
@@ -111,6 +124,7 @@ export async function signUpViewer(
     email,
     password,
     options: {
+      emailRedirectTo: getAuthRedirectTo(),
       data: {
         full_name: fullName,
         role: "viewer",
@@ -129,6 +143,10 @@ export async function signUpViewer(
     });
     if (profileError) throw profileError;
   }
+
+  return {
+    requiresEmailConfirmation: !data.session,
+  };
 }
 
 export async function addNewsletterSubscriber(

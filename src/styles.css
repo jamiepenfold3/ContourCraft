@@ -416,6 +416,14 @@ textarea {
   color: #7b4c33;
 }
 
+.auth-notice {
+  margin: 0;
+  padding: 12px 14px;
+  border-radius: 18px;
+  background: rgba(223, 241, 228, 0.95);
+  color: var(--accent);
+}
+
 .icon-button,
 .menu-trigger {
   background: rgba(223, 241, 228, 0.95);
