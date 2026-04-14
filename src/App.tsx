@@ -14,6 +14,7 @@ import {
   deletePlace,
   fetchAnalytics,
   fetchFavouritePlaceIds,
+  fetchPlaceCategoryKeys,
   fetchPlaceDetails,
   fetchPlacePreviewCategories,
   fetchPlaces,
@@ -34,6 +35,7 @@ import {
   AnalyticsSnapshot,
   AppProfile,
   CategoryKey,
+  LocationCategory,
 } from "./types";
 
 type Point = {
@@ -45,6 +47,34 @@ const currentHashId = () => window.location.hash.replace(/^#location-/, "") || n
 
 const sortEvents = (events: AdventureEvent[]) =>
   [...events].sort((left, right) => right.createdAt.localeCompare(left.createdAt));
+
+const mergeCategoriesByKey = (
+  existingCategories: LocationCategory[],
+  nextCategories: LocationCategory[],
+) => {
+  const mergedCategories = [...existingCategories];
+
+  for (const nextCategory of nextCategories) {
+    const existingIndex = mergedCategories.findIndex(
+      (category) => category.key === nextCategory.key,
+    );
+    if (existingIndex === -1) {
+      mergedCategories.push(nextCategory);
+      continue;
+    }
+    mergedCategories[existingIndex] = {
+      ...mergedCategories[existingIndex],
+      ...nextCategory,
+      headingPhoto: nextCategory.headingPhoto ?? mergedCategories[existingIndex].headingPhoto,
+      gallery: nextCategory.gallery.length
+        ? nextCategory.gallery
+        : mergedCategories[existingIndex].gallery,
+      strava: nextCategory.strava ?? mergedCategories[existingIndex].strava,
+    };
+  }
+
+  return mergedCategories;
+};
 
 const errorMessage = (error: unknown, fallback: string) => {
   if (error instanceof Error) {
@@ -98,6 +128,7 @@ export default function App() {
   const manageSectionRef = useRef<HTMLDivElement | null>(null);
   const analyticsSectionRef = useRef<HTMLDivElement | null>(null);
   const favouritesSectionRef = useRef<HTMLDivElement | null>(null);
+  const loadedCategoryKeyPlaceIdsRef = useRef(new Set<string>());
   const loadedDetailPlaceIdsRef = useRef(new Set<string>());
   const loadedPreviewCategoryPlaceIdsRef = useRef(new Set<string>());
 
@@ -301,6 +332,60 @@ export default function App() {
   const previewEvents = useMemo(() => filteredEvents.slice(0, 10), [filteredEvents]);
 
   useEffect(() => {
+    if (!isSupabaseConfigured) {
+      return;
+    }
+
+    const unloadedPlaceIds = visibleEvents
+      .map((event) => event.id)
+      .filter((placeId) => !loadedCategoryKeyPlaceIdsRef.current.has(placeId));
+    if (!unloadedPlaceIds.length) {
+      return;
+    }
+
+    unloadedPlaceIds.forEach((placeId) => {
+      loadedCategoryKeyPlaceIdsRef.current.add(placeId);
+    });
+
+    let active = true;
+    void fetchPlaceCategoryKeys(unloadedPlaceIds)
+      .then((categoryRows) => {
+        if (!active) return;
+        setEvents((current) =>
+          current.map((event) => {
+            if (!unloadedPlaceIds.includes(event.id)) return event;
+            const nextCategories = categoryRows
+              .filter((category) => category.place_id === event.id)
+              .map((category) => ({
+                key: category.key,
+                heading: category.heading,
+                description: "",
+                gallery: [],
+                strava: undefined,
+              }));
+
+            return {
+              ...event,
+              categories: mergeCategoriesByKey(event.categories, nextCategories),
+            };
+          }),
+        );
+      })
+      .catch((categoryError) => {
+        unloadedPlaceIds.forEach((placeId) => {
+          loadedCategoryKeyPlaceIdsRef.current.delete(placeId);
+        });
+        if (active) {
+          setError(errorMessage(categoryError, "Failed to load place filters."));
+        }
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [visibleEvents]);
+
+  useEffect(() => {
     if (!isSupabaseConfigured || selectedEventId) {
       return;
     }
@@ -323,24 +408,26 @@ export default function App() {
         setEvents((current) =>
           current.map((event) => {
             if (!unloadedPlaceIds.includes(event.id)) return event;
+            const nextCategories = categoryRows
+              .filter((category) => category.place_id === event.id)
+              .map((category) => ({
+                key: category.key,
+                heading: category.heading,
+                description: category.description,
+                headingPhoto: category.heading_photo_url
+                  ? {
+                      id: `${category.id}-heading`,
+                      name: category.heading_photo_name ?? category.heading,
+                      url: category.heading_photo_url,
+                    }
+                  : undefined,
+                gallery: [],
+                strava: undefined,
+              }));
+
             return {
               ...event,
-              categories: categoryRows
-                .filter((category) => category.place_id === event.id)
-                .map((category) => ({
-                  key: category.key,
-                  heading: category.heading,
-                  description: category.description,
-                  headingPhoto: category.heading_photo_url
-                    ? {
-                        id: `${category.id}-heading`,
-                        name: category.heading_photo_name ?? category.heading,
-                        url: category.heading_photo_url,
-                      }
-                    : undefined,
-                  gallery: [],
-                  strava: undefined,
-                })),
+              categories: mergeCategoriesByKey(event.categories, nextCategories),
             };
           }),
         );
@@ -432,6 +519,7 @@ export default function App() {
   const refreshPlaces = async () => {
     if (!isSupabaseConfigured) return;
     const places = await fetchPlaces();
+    loadedCategoryKeyPlaceIdsRef.current.clear();
     loadedDetailPlaceIdsRef.current.clear();
     loadedPreviewCategoryPlaceIdsRef.current.clear();
     setEvents(sortEvents(places));

@@ -232,6 +232,21 @@ export async function fetchPlacePreviewCategories(placeIds: string[]) {
   return categoryRows ?? [];
 }
 
+export async function fetchPlaceCategoryKeys(placeIds: string[]) {
+  if (!placeIds.length) {
+    return [];
+  }
+
+  const client = ensureClient();
+  const { data: categoryRows, error: categoryError } = await client
+    .from("place_categories")
+    .select("id, place_id, key, heading")
+    .in("place_id", placeIds);
+
+  if (categoryError) throw categoryError;
+  return categoryRows ?? [];
+}
+
 export async function fetchPlaceDetails(placeId: string) {
   const client = ensureClient();
   const [
