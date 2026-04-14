@@ -15,6 +15,7 @@ import {
   fetchAnalytics,
   fetchFavouritePlaceIds,
   fetchPlaceDetails,
+  fetchPlacePreviewCategories,
   fetchPlaces,
   getProfile,
   getSession,
@@ -98,6 +99,7 @@ export default function App() {
   const analyticsSectionRef = useRef<HTMLDivElement | null>(null);
   const favouritesSectionRef = useRef<HTMLDivElement | null>(null);
   const loadedDetailPlaceIdsRef = useRef(new Set<string>());
+  const loadedPreviewCategoryPlaceIdsRef = useRef(new Set<string>());
 
   const canCreate = profile?.role === "creator";
   const canAccessAnalytics = profile?.role === "creator";
@@ -298,6 +300,65 @@ export default function App() {
 
   const previewEvents = useMemo(() => filteredEvents.slice(0, 10), [filteredEvents]);
 
+  useEffect(() => {
+    if (!isSupabaseConfigured || selectedEventId) {
+      return;
+    }
+
+    const unloadedPlaceIds = previewEvents
+      .map((event) => event.id)
+      .filter((placeId) => !loadedPreviewCategoryPlaceIdsRef.current.has(placeId));
+    if (!unloadedPlaceIds.length) {
+      return;
+    }
+
+    unloadedPlaceIds.forEach((placeId) => {
+      loadedPreviewCategoryPlaceIdsRef.current.add(placeId);
+    });
+
+    let active = true;
+    void fetchPlacePreviewCategories(unloadedPlaceIds)
+      .then((categoryRows) => {
+        if (!active) return;
+        setEvents((current) =>
+          current.map((event) => {
+            if (!unloadedPlaceIds.includes(event.id)) return event;
+            return {
+              ...event,
+              categories: categoryRows
+                .filter((category) => category.place_id === event.id)
+                .map((category) => ({
+                  key: category.key,
+                  heading: category.heading,
+                  description: category.description,
+                  headingPhoto: category.heading_photo_url
+                    ? {
+                        id: `${category.id}-heading`,
+                        name: category.heading_photo_name ?? category.heading,
+                        url: category.heading_photo_url,
+                      }
+                    : undefined,
+                  gallery: [],
+                  strava: undefined,
+                })),
+            };
+          }),
+        );
+      })
+      .catch((previewError) => {
+        unloadedPlaceIds.forEach((placeId) => {
+          loadedPreviewCategoryPlaceIdsRef.current.delete(placeId);
+        });
+        if (active) {
+          setError(errorMessage(previewError, "Failed to load place previews."));
+        }
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [previewEvents, selectedEventId]);
+
   const activeMapFilterKeys = useMemo(
     () =>
       Object.entries(mapFilters)
@@ -372,6 +433,7 @@ export default function App() {
     if (!isSupabaseConfigured) return;
     const places = await fetchPlaces();
     loadedDetailPlaceIdsRef.current.clear();
+    loadedPreviewCategoryPlaceIdsRef.current.clear();
     setEvents(sortEvents(places));
   };
 

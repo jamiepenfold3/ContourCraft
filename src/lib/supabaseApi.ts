@@ -14,6 +14,8 @@ type PlaceInsert = Omit<AdventureEvent, "id" | "createdAt" | "createdBy" | "crea
   createdByName: string;
 };
 
+const INITIAL_PLACE_LIMIT = 250;
+
 const ensureClient = () => {
   if (!supabase) {
     throw new Error("Supabase is not configured.");
@@ -190,15 +192,26 @@ export async function fetchPlaces() {
         recommend_count
       `,
     )
-    .order("created_at", { ascending: false });
+    .order("created_at", { ascending: false })
+    .limit(INITIAL_PLACE_LIMIT);
 
   if (error) throw error;
 
-  const placeIds = (placeRows ?? []).map((place) => place.id);
+  return (placeRows ?? []).map((place) =>
+    mapPlace({
+      ...place,
+      place_categories: [],
+      place_comments: [],
+    }),
+  );
+}
+
+export async function fetchPlacePreviewCategories(placeIds: string[]) {
   if (!placeIds.length) {
     return [];
   }
 
+  const client = ensureClient();
   const { data: categoryRows, error: categoryError } = await client
     .from("place_categories")
     .select(
@@ -212,19 +225,11 @@ export async function fetchPlaces() {
         heading_photo_url
       `,
     )
-    .in("place_id", placeIds);
+    .in("place_id", placeIds)
+    .in("key", ["campsite", "accommodation"]);
 
   if (categoryError) throw categoryError;
-
-  return (placeRows ?? []).map((place) =>
-    mapPlace({
-      ...place,
-      place_categories: (categoryRows ?? []).filter(
-        (category) => category.place_id === place.id,
-      ),
-      place_comments: [],
-    }),
-  );
+  return categoryRows ?? [];
 }
 
 export async function fetchPlaceDetails(placeId: string) {

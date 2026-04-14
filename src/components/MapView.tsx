@@ -42,6 +42,7 @@ const eventIcon = (event: AdventureEvent) =>
   new DivIcon({
     className: "custom-pin-wrapper",
     html: `<div class="emoji-pin">${
+      event.placeType !== "non-camping" ||
       event.categories.some((category) => category.key === "campsite")
         ? "🏕️"
         : event.categories.some((category) => category.key === "accommodation")

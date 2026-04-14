@@ -109,6 +109,9 @@ alter table public.place_favourites enable row level security;
 create index if not exists place_categories_place_id_idx
 on public.place_categories(place_id);
 
+create index if not exists place_categories_place_id_key_idx
+on public.place_categories(place_id, key);
+
 create index if not exists place_comments_place_id_idx
 on public.place_comments(place_id);
 
@@ -117,6 +120,10 @@ on public.place_comments(place_id, created_at desc);
 
 create index if not exists places_created_at_idx
 on public.places(created_at desc);
+
+create index if not exists places_public_created_at_idx
+on public.places(created_at desc)
+where place_type <> 'wild-camping';
 
 create index if not exists places_created_by_idx
 on public.places(created_by);
