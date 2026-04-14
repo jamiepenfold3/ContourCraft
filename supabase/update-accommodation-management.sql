@@ -105,6 +105,18 @@ on public.place_categories(place_id);
 create index if not exists place_comments_place_id_idx
 on public.place_comments(place_id);
 
+create index if not exists place_comments_place_id_created_at_idx
+on public.place_comments(place_id, created_at desc);
+
+create index if not exists places_created_at_idx
+on public.places(created_at desc);
+
+create index if not exists places_created_by_idx
+on public.places(created_by);
+
+create index if not exists places_place_type_idx
+on public.places(place_type);
+
 create table if not exists public.newsletter_subscribers (
   email text primary key,
   full_name text not null,

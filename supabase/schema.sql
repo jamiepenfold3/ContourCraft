@@ -106,6 +106,24 @@ alter table public.place_comments enable row level security;
 alter table public.analytics_events enable row level security;
 alter table public.place_favourites enable row level security;
 
+create index if not exists place_categories_place_id_idx
+on public.place_categories(place_id);
+
+create index if not exists place_comments_place_id_idx
+on public.place_comments(place_id);
+
+create index if not exists place_comments_place_id_created_at_idx
+on public.place_comments(place_id, created_at desc);
+
+create index if not exists places_created_at_idx
+on public.places(created_at desc);
+
+create index if not exists places_created_by_idx
+on public.places(created_by);
+
+create index if not exists places_place_type_idx
+on public.places(place_type);
+
 create policy "profiles selectable by owner"
 on public.profiles for select
 to authenticated
@@ -180,13 +198,7 @@ using (
 
 create policy "public can view categories for visible places"
 on public.place_categories for select
-using (
-  exists (
-    select 1
-    from public.places
-    where places.id = place_categories.place_id
-  )
-);
+using (true);
 
 create policy "creators can insert categories"
 on public.place_categories for insert
@@ -227,13 +239,7 @@ alter table if exists public.place_categories
 
 create policy "public can view comments"
 on public.place_comments for select
-using (
-  exists (
-    select 1
-    from public.places
-    where places.id = place_comments.place_id
-  )
-);
+using (true);
 
 create policy "public can insert comments"
 on public.place_comments for insert

@@ -14,6 +14,7 @@ import {
   deletePlace,
   fetchAnalytics,
   fetchFavouritePlaceIds,
+  fetchPlaceDetails,
   fetchPlaces,
   getProfile,
   getSession,
@@ -96,6 +97,7 @@ export default function App() {
   const manageSectionRef = useRef<HTMLDivElement | null>(null);
   const analyticsSectionRef = useRef<HTMLDivElement | null>(null);
   const favouritesSectionRef = useRef<HTMLDivElement | null>(null);
+  const loadedDetailPlaceIdsRef = useRef(new Set<string>());
 
   const canCreate = profile?.role === "creator";
   const canAccessAnalytics = profile?.role === "creator";
@@ -294,6 +296,8 @@ export default function App() {
     });
   }, [mapFilteredEvents, searchMode, searchTerm, selectedTag]);
 
+  const previewEvents = useMemo(() => filteredEvents.slice(0, 10), [filteredEvents]);
+
   const activeMapFilterKeys = useMemo(
     () =>
       Object.entries(mapFilters)
@@ -318,12 +322,56 @@ export default function App() {
     );
   };
 
+  const getCampingPreviewCategory = (event: AdventureEvent) =>
+    event.categories.find(
+      (category) =>
+        (category.key === "campsite" || category.key === "accommodation") &&
+        category.headingPhoto,
+    ) ??
+    event.categories.find(
+      (category) => category.key === "campsite" || category.key === "accommodation",
+    );
+
   const selectedEvent = mapFilteredEvents.find((event) => event.id === selectedEventId) ?? null;
   const editingEvent = events.find((event) => event.id === editingEventId) ?? null;
+
+  useEffect(() => {
+    if (!isSupabaseConfigured || !selectedEvent) {
+      return;
+    }
+    const selectedPlaceId = selectedEvent.id;
+    if (loadedDetailPlaceIdsRef.current.has(selectedPlaceId)) {
+      return;
+    }
+
+    let active = true;
+    loadedDetailPlaceIdsRef.current.add(selectedPlaceId);
+
+    void fetchPlaceDetails(selectedPlaceId)
+      .then((detailedPlace) => {
+        if (!active) return;
+        setEvents((current) =>
+          current.map((event) =>
+            event.id === selectedPlaceId ? detailedPlace : event,
+          ),
+        );
+      })
+      .catch((detailsError) => {
+        loadedDetailPlaceIdsRef.current.delete(selectedPlaceId);
+        if (active) {
+          setError(errorMessage(detailsError, "Failed to load place details."));
+        }
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [selectedEvent?.id]);
 
   const refreshPlaces = async () => {
     if (!isSupabaseConfigured) return;
     const places = await fetchPlaces();
+    loadedDetailPlaceIdsRef.current.clear();
     setEvents(sortEvents(places));
   };
 
@@ -688,8 +736,9 @@ export default function App() {
           ) : null}
           {!selectedEvent ? (
             <div className="event-list">
-              {filteredEvents.map((event) => {
-                const previewPhoto = getListPreviewPhoto(event);
+              {previewEvents.map((event) => {
+                const previewCategory = getCampingPreviewCategory(event);
+                const previewPhoto = previewCategory?.headingPhoto;
                 return (
                   <button
                     type="button"
@@ -702,25 +751,18 @@ export default function App() {
                         className="event-preview-image"
                         src={previewPhoto.url}
                         alt={previewPhoto.name}
+                        loading="lazy"
                       />
                     ) : null}
                     <span>{event.title}</span>
-                    <small>
-                      {event.locationName} · {event.placeType}
-                    </small>
-                    {event.tags.length ? (
-                      <div className="tag-row">
-                        {event.tags.map((tag) => (
-                          <span className="tag-pill" key={tag}>
-                            {tag}
-                          </span>
-                        ))}
-                      </div>
-                    ) : null}
-                    <p>{event.needToKnows}</p>
+                    <small>{event.locationName}</small>
+                    {previewCategory ? <p>{previewCategory.description}</p> : null}
                   </button>
                 );
               })}
+              {filteredEvents.length > previewEvents.length ? (
+                <p className="guest-copy">Showing 10 previews. Use the map, filters, or search to narrow the list.</p>
+              ) : null}
               {!filteredEvents.length ? (
                 <section className="panel">
                   <p className="guest-copy">No places matched that search.</p>
@@ -826,8 +868,10 @@ export default function App() {
               <div className="event-list">
                 {events
                   .filter((event) => favouritePlaceIds.includes(event.id))
+                  .slice(0, 10)
                   .map((event) => {
-                    const previewPhoto = getListPreviewPhoto(event);
+                    const previewCategory = getCampingPreviewCategory(event);
+                    const previewPhoto = previewCategory?.headingPhoto ?? getListPreviewPhoto(event);
                     return (
                       <button
                         type="button"
@@ -840,11 +884,12 @@ export default function App() {
                             className="event-preview-image"
                             src={previewPhoto.url}
                             alt={previewPhoto.name}
+                            loading="lazy"
                           />
                         ) : null}
                         <span>{event.title}</span>
                         <small>{event.locationName}</small>
-                        <p>{event.needToKnows}</p>
+                        {previewCategory ? <p>{previewCategory.description}</p> : null}
                       </button>
                     );
                   })}
