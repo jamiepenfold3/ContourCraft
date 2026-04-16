@@ -144,6 +144,7 @@ export default function App() {
   const [selectedTag, setSelectedTag] = useState("all");
   const [error, setError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(isSupabaseConfigured);
+  const [areCategoryFiltersReady, setAreCategoryFiltersReady] = useState(!isSupabaseConfigured);
   const authSectionRef = useRef<HTMLDivElement | null>(null);
   const createSectionRef = useRef<HTMLDivElement | null>(null);
   const manageSectionRef = useRef<HTMLDivElement | null>(null);
@@ -315,12 +316,16 @@ export default function App() {
       return visibleEvents;
     }
 
+    if (!areCategoryFiltersReady) {
+      return visibleEvents;
+    }
+
     return visibleEvents.filter((event) =>
       activeFilters.every((filter) =>
         event.categories.some((category) => categoryMatchesFilter(category, filter)),
       ),
     );
-  }, [mapFilters, visibleEvents]);
+  }, [areCategoryFiltersReady, mapFilters, visibleEvents]);
 
   const allTags = useMemo(
     () =>
@@ -357,13 +362,20 @@ export default function App() {
       return;
     }
 
+    if (!visibleEvents.length) {
+      setAreCategoryFiltersReady(true);
+      return;
+    }
+
     const unloadedPlaceIds = visibleEvents
       .map((event) => event.id)
       .filter((placeId) => !loadedCategoryKeyPlaceIdsRef.current.has(placeId));
     if (!unloadedPlaceIds.length) {
+      setAreCategoryFiltersReady(true);
       return;
     }
 
+    setAreCategoryFiltersReady(false);
     unloadedPlaceIds.forEach((placeId) => {
       loadedCategoryKeyPlaceIdsRef.current.add(placeId);
     });
@@ -391,6 +403,7 @@ export default function App() {
             };
           }),
         );
+        setAreCategoryFiltersReady(true);
       })
       .catch((categoryError) => {
         unloadedPlaceIds.forEach((placeId) => {
@@ -398,6 +411,7 @@ export default function App() {
         });
         if (active) {
           setError(errorMessage(categoryError, "Failed to load place filters."));
+          setAreCategoryFiltersReady(true);
         }
       });
 
@@ -407,7 +421,7 @@ export default function App() {
   }, [visibleEvents]);
 
   useEffect(() => {
-    if (!isSupabaseConfigured || selectedEventId) {
+    if (!isSupabaseConfigured || selectedEventId || !areCategoryFiltersReady) {
       return;
     }
 
@@ -465,7 +479,7 @@ export default function App() {
     return () => {
       active = false;
     };
-  }, [previewEvents, selectedEventId]);
+  }, [areCategoryFiltersReady, previewEvents, selectedEventId]);
 
   const activeMapFilterKeys = useMemo(
     () =>
@@ -547,6 +561,7 @@ export default function App() {
     loadedCategoryKeyPlaceIdsRef.current.clear();
     loadedDetailPlaceIdsRef.current.clear();
     loadedPreviewCategoryPlaceIdsRef.current.clear();
+    setAreCategoryFiltersReady(false);
     setEvents(sortEvents(places));
   };
 

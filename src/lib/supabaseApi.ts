@@ -4,6 +4,7 @@ import {
   AnalyticsSnapshot,
   AppProfile,
   EventComment,
+  CategoryKey,
   LocationCategory,
   PlaceType,
 } from "../types";
@@ -45,6 +46,12 @@ const getAuthRedirectTo = () => {
   return window.location.origin;
 };
 
+const normalizeCategoryKey = (key: string): CategoryKey => {
+  if (key === "food") return "eating_out";
+  if (key === "wineries") return "wine_tasting";
+  return key as CategoryKey;
+};
+
 const mapProfile = (row: any): AppProfile => ({
   id: row.id,
   email: row.email ?? "",
@@ -56,7 +63,7 @@ const mapProfile = (row: any): AppProfile => ({
 });
 
 const mapCategory = (row: any): LocationCategory => ({
-  key: row.key,
+  key: normalizeCategoryKey(row.key),
   heading: row.heading,
   description: row.description,
   headingPhoto: row.heading_photo_url
@@ -262,7 +269,10 @@ export async function fetchPlacePreviewCategories(placeIds: string[]) {
     .in("key", ["campsite", "accommodation"]);
 
   if (categoryError) throw categoryError;
-  return categoryRows ?? [];
+  return (categoryRows ?? []).map((category) => ({
+    ...category,
+    key: normalizeCategoryKey(category.key),
+  }));
 }
 
 export async function fetchPlaceCategoryKeys(placeIds: string[]) {
@@ -282,7 +292,12 @@ export async function fetchPlaceCategoryKeys(placeIds: string[]) {
 
   const failedResult = results.find((result) => result.error);
   if (failedResult?.error) throw failedResult.error;
-  return results.flatMap((result) => result.data ?? []);
+  return results.flatMap((result) =>
+    (result.data ?? []).map((category) => ({
+      ...category,
+      key: normalizeCategoryKey(category.key),
+    })),
+  );
 }
 
 export async function fetchPlaceDetails(placeId: string) {

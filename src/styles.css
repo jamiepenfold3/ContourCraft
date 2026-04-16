@@ -234,29 +234,37 @@ img {
   border: 1px solid transparent;
   box-shadow: 0 10px 30px rgba(73, 92, 73, 0.08);
   display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: center;
+  column-gap: 12px;
   gap: 4px;
 }
 
 .event-list-item span {
   font-weight: 700;
+  grid-column: 2;
 }
 
 .event-list-item small {
   color: var(--text-soft);
+  grid-column: 2;
 }
 
 .event-list-item p {
   margin: 0;
   color: var(--text-soft);
   font-size: 0.92rem;
+  grid-column: 2;
 }
 
 .event-preview-image {
-  width: 100%;
+  width: 84px;
+  max-height: 84px;
   height: auto;
   object-fit: contain;
-  border-radius: 18px;
-  margin-bottom: 8px;
+  border-radius: 12px;
+  grid-row: 1 / span 3;
+  grid-column: 1;
 }
 
 .search-panel {
