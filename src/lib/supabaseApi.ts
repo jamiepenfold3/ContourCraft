@@ -15,6 +15,15 @@ type PlaceInsert = Omit<AdventureEvent, "id" | "createdAt" | "createdBy" | "crea
 };
 
 const INITIAL_PLACE_LIMIT = 250;
+const PLACE_ID_BATCH_SIZE = 50;
+
+const chunksOf = <T,>(items: T[], size: number) => {
+  const chunks: T[][] = [];
+  for (let index = 0; index < items.length; index += size) {
+    chunks.push(items.slice(index, index + size));
+  }
+  return chunks;
+};
 
 const ensureClient = () => {
   if (!supabase) {
@@ -42,6 +51,8 @@ const mapProfile = (row: any): AppProfile => ({
   fullName: row.full_name ?? "Unknown",
   role: row.role,
   wildCampingAccess: Boolean(row.wild_camping_access),
+  avatarPhotoName: row.avatar_photo_name ?? undefined,
+  avatarUrl: row.avatar_url ?? undefined,
 });
 
 const mapCategory = (row: any): LocationCategory => ({
@@ -65,6 +76,7 @@ const mapComment = (row: any): EventComment => ({
   email: row.email,
   message: row.message,
   createdAt: row.created_at.slice(0, 10),
+  avatarUrl: row.avatar_url ?? undefined,
 });
 
 const mapPlace = (row: any): AdventureEvent => ({
@@ -102,7 +114,7 @@ export async function getProfile(userId: string) {
   const client = ensureClient();
   const { data, error } = await client
     .from("profiles")
-    .select("id, email, full_name, role, wild_camping_access")
+    .select("id, email, full_name, role, wild_camping_access, avatar_photo_name, avatar_url")
     .eq("id", userId)
     .single();
 
@@ -142,6 +154,8 @@ export async function signUpViewer(
       full_name: fullName,
       role: "viewer",
       wild_camping_access: false,
+      avatar_photo_name: null,
+      avatar_url: null,
     });
     if (profileError) throw profileError;
   }
@@ -149,6 +163,25 @@ export async function signUpViewer(
   return {
     requiresEmailConfirmation: !data.session,
   };
+}
+
+export async function updateProfilePhoto(
+  userId: string,
+  photo: { name: string; url: string } | null,
+) {
+  const client = ensureClient();
+  const { data, error } = await client
+    .from("profiles")
+    .update({
+      avatar_photo_name: photo?.name ?? null,
+      avatar_url: photo?.url ?? null,
+    })
+    .eq("id", userId)
+    .select("id, email, full_name, role, wild_camping_access, avatar_photo_name, avatar_url")
+    .single();
+
+  if (error) throw error;
+  return mapProfile(data);
 }
 
 export async function addNewsletterSubscriber(
@@ -238,13 +271,18 @@ export async function fetchPlaceCategoryKeys(placeIds: string[]) {
   }
 
   const client = ensureClient();
-  const { data: categoryRows, error: categoryError } = await client
-    .from("place_categories")
-    .select("id, place_id, key, heading")
-    .in("place_id", placeIds);
+  const results = await Promise.all(
+    chunksOf(placeIds, PLACE_ID_BATCH_SIZE).map((placeIdBatch) =>
+      client
+        .from("place_categories")
+        .select("id, place_id, key, heading")
+        .in("place_id", placeIdBatch),
+    ),
+  );
 
-  if (categoryError) throw categoryError;
-  return categoryRows ?? [];
+  const failedResult = results.find((result) => result.error);
+  if (failedResult?.error) throw failedResult.error;
+  return results.flatMap((result) => result.data ?? []);
 }
 
 export async function fetchPlaceDetails(placeId: string) {
@@ -293,7 +331,7 @@ export async function fetchPlaceDetails(placeId: string) {
       .eq("place_id", placeId),
     client
       .from("place_comments")
-      .select("id, name, email, message, created_at")
+      .select("id, name, email, message, created_at, avatar_url")
       .eq("place_id", placeId)
       .order("created_at", { ascending: false })
       .limit(100),
@@ -458,7 +496,13 @@ export async function removeFavourite(userId: string, placeId: string) {
 
 export async function addComment(
   placeId: string,
-  comment: { name: string; email: string; message: string },
+  comment: {
+    name: string;
+    email: string;
+    message: string;
+    profileId?: string;
+    avatarUrl?: string;
+  },
 ) {
   const client = ensureClient();
   const { data, error } = await client
@@ -468,8 +512,10 @@ export async function addComment(
       name: comment.name,
       email: comment.email,
       message: comment.message,
+      profile_id: comment.profileId ?? null,
+      avatar_url: comment.avatarUrl ?? null,
     })
-    .select("*")
+    .select("id, name, email, message, created_at, avatar_url")
     .single();
 
   if (error) throw error;

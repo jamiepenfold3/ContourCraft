@@ -11,8 +11,11 @@ export const initialAnalytics: AnalyticsSnapshot = {
     campsite: 0,
     accommodation: 0,
     trails: 0,
-    food: 0,
-    wineries: 0,
+    trails_2: 0,
+    eating_out: 0,
+    eating_in: 0,
+    wine_tasting: 0,
+    beer_tasting: 0,
     swim: 0,
     strava: 0,
   },
@@ -77,7 +80,7 @@ export const sampleEvents: AdventureEvent[] = [
         gallery: [],
       },
       {
-        key: "food",
+        key: "eating_in",
         heading: "Simple fire-cooked meals",
         description:
           "Braai packs, roasted mielies, and a cast-iron breakfast work best here. It is the kind of camp where the food stays uncomplicated and the setting does most of the work.",
@@ -89,7 +92,7 @@ export const sampleEvents: AdventureEvent[] = [
         gallery: [],
       },
       {
-        key: "wineries",
+        key: "wine_tasting",
         heading: "Swartland detour on the way home",
         description:
           "The drive back opens nicely into a vineyard stop for low-intervention reds and a long lunch. It makes the trip feel complete rather than rushed.",
@@ -156,7 +159,7 @@ export const sampleEvents: AdventureEvent[] = [
         gallery: [],
       },
       {
-        key: "food",
+        key: "eating_out",
         heading: "Long lunch country stop",
         description:
           "Bakery breakfast, wood-fired pizza at lunch, and farm stall produce for a relaxed dinner spread back at the stay.",
@@ -168,7 +171,7 @@ export const sampleEvents: AdventureEvent[] = [
         gallery: [],
       },
       {
-        key: "wineries",
+        key: "wine_tasting",
         heading: "Built for cellar hopping",
         description:
           "This stop suits a full day of cellar visits: chardonnay tastings, ocean air, and a final brewery stop before sunset.",

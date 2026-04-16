@@ -1,4 +1,4 @@
-import { FormEvent, useState } from "react";
+import { ChangeEvent, FormEvent, useState } from "react";
 import { AppProfile } from "../types";
 
 type AuthSheetProps = {
@@ -11,13 +11,23 @@ type AuthSheetProps = {
     newsletterOptIn: boolean,
   ) => Promise<{ requiresEmailConfirmation: boolean }>;
   onLogout: () => Promise<void>;
+  onUpdateProfilePhoto: (photo: { name: string; url: string } | null) => Promise<void>;
 };
+
+const fileToDataUrl = (file: File) =>
+  new Promise<string>((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result));
+    reader.onerror = reject;
+    reader.readAsDataURL(file);
+  });
 
 export function AuthSheet({
   profile,
   onLogin,
   onSignUp,
   onLogout,
+  onUpdateProfilePhoto,
 }: AuthSheetProps) {
   const [fullName, setFullName] = useState("");
   const [email, setEmail] = useState("");
@@ -27,6 +37,7 @@ export function AuthSheet({
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isPhotoSaving, setIsPhotoSaving] = useState(false);
 
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -58,12 +69,53 @@ export function AuthSheet({
     }
   };
 
+  const handleProfilePhoto = async (event: ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+    setError(null);
+    setNotice(null);
+    setIsPhotoSaving(true);
+    try {
+      await onUpdateProfilePhoto({
+        name: file.name,
+        url: await fileToDataUrl(file),
+      });
+      setNotice("Profile picture updated.");
+    } catch (photoError) {
+      setError(photoError instanceof Error ? photoError.message : "Could not update profile picture.");
+    } finally {
+      setIsPhotoSaving(false);
+      event.target.value = "";
+    }
+  };
+
+  const handleRemoveProfilePhoto = async () => {
+    setError(null);
+    setNotice(null);
+    setIsPhotoSaving(true);
+    try {
+      await onUpdateProfilePhoto(null);
+      setNotice("Profile picture removed.");
+    } catch (photoError) {
+      setError(photoError instanceof Error ? photoError.message : "Could not remove profile picture.");
+    } finally {
+      setIsPhotoSaving(false);
+    }
+  };
+
   if (profile) {
     return (
       <div className="auth-card">
         <div>
           <p className="eyebrow">Signed in</p>
-          <h3>{profile.fullName}</h3>
+          <div className="profile-summary">
+            {profile.avatarUrl ? (
+              <img src={profile.avatarUrl} alt={profile.fullName} />
+            ) : (
+              <span>{profile.fullName.slice(0, 1).toUpperCase()}</span>
+            )}
+            <h3>{profile.fullName}</h3>
+          </div>
           <p className="guest-copy">
             {profile.role === "creator"
               ? "Creator access enabled. You can publish places and view analytics from the menu."
@@ -72,6 +124,22 @@ export function AuthSheet({
                 : "Viewer account active. Wild camping remains locked until access is granted."}
           </p>
         </div>
+        <label>
+          Profile picture
+          <input type="file" accept="image/*" onChange={handleProfilePhoto} />
+        </label>
+        {profile.avatarUrl ? (
+          <button
+            type="button"
+            className="ghost-button"
+            disabled={isPhotoSaving}
+            onClick={() => void handleRemoveProfilePhoto()}
+          >
+            Remove profile picture
+          </button>
+        ) : null}
+        {error ? <p className="auth-error">{error}</p> : null}
+        {notice ? <p className="auth-notice">{notice}</p> : null}
         <button type="button" className="ghost-button" onClick={() => void onLogout()}>
           Log out
         </button>

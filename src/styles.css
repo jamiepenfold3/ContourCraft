@@ -383,6 +383,34 @@ textarea {
   flex-wrap: wrap;
 }
 
+.profile-summary,
+.commenting-as,
+.comment-author {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.profile-summary img,
+.profile-summary span,
+.commenting-as img,
+.comment-author img {
+  width: 42px;
+  height: 42px;
+  border-radius: 999px;
+  object-fit: cover;
+  background: var(--accent-soft);
+  color: var(--accent);
+  display: grid;
+  place-items: center;
+  font-weight: 800;
+  flex: 0 0 auto;
+}
+
+.profile-summary h3 {
+  margin: 0;
+}
+
 .inline-checkbox {
   display: flex !important;
   align-items: center;

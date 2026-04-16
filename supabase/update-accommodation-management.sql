@@ -1,9 +1,28 @@
 alter table if exists public.place_categories
   drop constraint if exists place_categories_key_check;
 
+update public.place_categories
+set key = 'wine_tasting'
+where key = 'wineries';
+
+update public.place_categories
+set key = 'eating_out'
+where key = 'food';
+
 alter table if exists public.place_categories
   add constraint place_categories_key_check
-  check (key in ('campsite', 'accommodation', 'trails', 'food', 'wineries', 'swim', 'strava'));
+  check (key in (
+    'campsite',
+    'accommodation',
+    'trails',
+    'trails_2',
+    'eating_out',
+    'eating_in',
+    'wine_tasting',
+    'beer_tasting',
+    'swim',
+    'strava'
+  ));
 
 alter table if exists public.place_categories
   alter column heading_photo_name drop not null,
@@ -11,6 +30,14 @@ alter table if exists public.place_categories
 
 alter table if exists public.places
   add column if not exists contact_email text;
+
+alter table if exists public.profiles
+  add column if not exists avatar_photo_name text,
+  add column if not exists avatar_url text;
+
+alter table if exists public.place_comments
+  add column if not exists profile_id uuid references public.profiles(id) on delete set null,
+  add column if not exists avatar_url text;
 
 create table if not exists public.place_favourites (
   user_id uuid not null references public.profiles(id) on delete cascade,

@@ -22,9 +22,12 @@ type EventDetailProps = {
 const sectionLabels: Record<CategoryKey, string> = {
   campsite: "Campsite",
   accommodation: "Accommodation",
-  trails: "Trail runs / hikes",
-  food: "Food bought / made",
-  wineries: "Wine farms / breweries",
+  trails: "Trail run / hike 1",
+  trails_2: "Trail run / hike 2",
+  eating_out: "Eating out",
+  eating_in: "Eating in",
+  wine_tasting: "Wine tasting",
+  beer_tasting: "Beer tasting",
   swim: "Swim spots",
   strava: "Strava activity",
 };
@@ -222,7 +225,12 @@ export function EventDetail({
 
         <form className="comment-form" onSubmit={handleCommentSubmit}>
           {profile ? (
-            <p className="guest-copy">Commenting as {profile.fullName}.</p>
+            <div className="commenting-as">
+              {profile.avatarUrl ? (
+                <img src={profile.avatarUrl} alt={profile.fullName} />
+              ) : null}
+              <p className="guest-copy">Commenting as {profile.fullName}.</p>
+            </div>
           ) : (
             <div className="form-grid">
               <label>
@@ -268,7 +276,12 @@ export function EventDetail({
               .map((comment) => (
                 <div className="comment-card" key={comment.id}>
                   <div className="section-title">
-                    <strong>{comment.name}</strong>
+                    <div className="comment-author">
+                      {comment.avatarUrl ? (
+                        <img src={comment.avatarUrl} alt={comment.name} />
+                      ) : null}
+                      <strong>{comment.name}</strong>
+                    </div>
                     <span>{comment.createdAt}</span>
                   </div>
                   <p>{comment.message}</p>

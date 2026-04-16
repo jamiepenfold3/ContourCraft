@@ -6,6 +6,8 @@ create table if not exists public.profiles (
   full_name text not null,
   role text not null check (role in ('creator', 'viewer')) default 'viewer',
   wild_camping_access boolean not null default false,
+  avatar_photo_name text,
+  avatar_url text,
   created_at timestamptz not null default now()
 );
 
@@ -54,7 +56,18 @@ create table if not exists public.places (
 create table if not exists public.place_categories (
   id uuid primary key default gen_random_uuid(),
   place_id uuid not null references public.places(id) on delete cascade,
-  key text not null check (key in ('campsite', 'accommodation', 'trails', 'food', 'wineries', 'swim', 'strava')),
+  key text not null check (key in (
+    'campsite',
+    'accommodation',
+    'trails',
+    'trails_2',
+    'eating_out',
+    'eating_in',
+    'wine_tasting',
+    'beer_tasting',
+    'swim',
+    'strava'
+  )),
   heading text not null,
   description text not null,
   heading_photo_name text,
@@ -69,6 +82,8 @@ create table if not exists public.place_comments (
   name text not null,
   email text not null,
   message text not null,
+  profile_id uuid references public.profiles(id) on delete set null,
+  avatar_url text,
   created_at timestamptz not null default now()
 );
 
@@ -236,9 +251,28 @@ using (
 alter table if exists public.place_categories
   drop constraint if exists place_categories_key_check;
 
+update public.place_categories
+set key = 'wine_tasting'
+where key = 'wineries';
+
+update public.place_categories
+set key = 'eating_out'
+where key = 'food';
+
 alter table if exists public.place_categories
   add constraint place_categories_key_check
-  check (key in ('campsite', 'accommodation', 'trails', 'food', 'wineries', 'swim', 'strava'));
+  check (key in (
+    'campsite',
+    'accommodation',
+    'trails',
+    'trails_2',
+    'eating_out',
+    'eating_in',
+    'wine_tasting',
+    'beer_tasting',
+    'swim',
+    'strava'
+  ));
 
 alter table if exists public.place_categories
   alter column heading_photo_name drop not null,

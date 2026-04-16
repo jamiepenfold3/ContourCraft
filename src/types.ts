@@ -19,8 +19,11 @@ export type CategoryKey =
   | "campsite"
   | "accommodation"
   | "trails"
-  | "food"
-  | "wineries"
+  | "trails_2"
+  | "eating_out"
+  | "eating_in"
+  | "wine_tasting"
+  | "beer_tasting"
   | "swim"
   | "strava";
 
@@ -39,6 +42,7 @@ export type EventComment = {
   email: string;
   message: string;
   createdAt: string;
+  avatarUrl?: string;
 };
 
 export type PlaceType = "wild-camping" | "camping" | "non-camping";
@@ -51,6 +55,8 @@ export type AppProfile = {
   fullName: string;
   role: ProfileRole;
   wildCampingAccess: boolean;
+  avatarPhotoName?: string;
+  avatarUrl?: string;
 };
 
 export type AdventureEvent = {

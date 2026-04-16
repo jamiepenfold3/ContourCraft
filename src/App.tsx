@@ -28,6 +28,7 @@ import {
   signUpViewer,
   trackEvent,
   updatePlace,
+  updateProfilePhoto,
 } from "./lib/supabaseApi";
 import { isSupabaseConfigured } from "./lib/supabase";
 import {
@@ -42,6 +43,17 @@ type Point = {
   lat: number;
   lng: number;
 };
+
+type MapFilterKey =
+  | "campsite"
+  | "accommodation"
+  | "trails"
+  | "eating_out"
+  | "eating_in"
+  | "wine_tasting"
+  | "beer_tasting"
+  | "swim"
+  | "strava";
 
 const currentHashId = () => window.location.hash.replace(/^#location-/, "") || null;
 
@@ -74,6 +86,13 @@ const mergeCategoriesByKey = (
   }
 
   return mergedCategories;
+};
+
+const categoryMatchesFilter = (category: LocationCategory, filter: MapFilterKey) => {
+  if (filter === "trails") {
+    return category.key === "trails" || category.key === "trails_2";
+  }
+  return category.key === filter;
 };
 
 const errorMessage = (error: unknown, fallback: string) => {
@@ -109,12 +128,14 @@ export default function App() {
   const [favouritePlaceIds, setFavouritePlaceIds] = useState<string[]>([]);
   const [draftPoint, setDraftPoint] = useState<Point | null>(null);
   const [editingEventId, setEditingEventId] = useState<string | null>(null);
-  const [mapFilters, setMapFilters] = useState<Record<CategoryKey, boolean>>({
+  const [mapFilters, setMapFilters] = useState<Record<MapFilterKey, boolean>>({
     campsite: false,
     accommodation: false,
     trails: false,
-    food: false,
-    wineries: false,
+    eating_out: false,
+    eating_in: false,
+    wine_tasting: false,
+    beer_tasting: false,
     swim: false,
     strava: false,
   });
@@ -288,7 +309,7 @@ export default function App() {
   const mapFilteredEvents = useMemo(() => {
     const activeFilters = Object.entries(mapFilters)
       .filter(([, enabled]) => enabled)
-      .map(([key]) => key as CategoryKey);
+      .map(([key]) => key as MapFilterKey);
 
     if (!activeFilters.length) {
       return visibleEvents;
@@ -296,7 +317,7 @@ export default function App() {
 
     return visibleEvents.filter((event) =>
       activeFilters.every((filter) =>
-        event.categories.some((category) => category.key === filter),
+        event.categories.some((category) => categoryMatchesFilter(category, filter)),
       ),
     );
   }, [mapFilters, visibleEvents]);
@@ -450,13 +471,17 @@ export default function App() {
     () =>
       Object.entries(mapFilters)
         .filter(([, enabled]) => enabled)
-        .map(([key]) => key as CategoryKey),
+        .map(([key]) => key as MapFilterKey),
     [mapFilters],
   );
 
   const getListPreviewPhoto = (event: AdventureEvent) => {
     const filteredCategory = activeMapFilterKeys
-      .map((key) => event.categories.find((category) => category.key === key && category.headingPhoto))
+      .map((key) =>
+        event.categories.find(
+          (category) => categoryMatchesFilter(category, key) && category.headingPhoto,
+        ),
+      )
       .find(Boolean);
 
     return (
@@ -554,6 +579,12 @@ export default function App() {
     setProfile(null);
     setFavouritePlaceIds([]);
     setShowCreateForm(false);
+  };
+
+  const handleUpdateProfilePhoto = async (photo: { name: string; url: string } | null) => {
+    if (!profile) return;
+    const nextProfile = await updateProfilePhoto(profile.id, photo);
+    setProfile(nextProfile);
   };
 
   const handleCreateEvent = async (
@@ -692,7 +723,11 @@ export default function App() {
     if (comment.newsletterOptIn) {
       await addNewsletterSubscriber(comment.name, comment.email, "comment");
     }
-    const inserted = await addComment(eventId, comment);
+    const inserted = await addComment(eventId, {
+      ...comment,
+      profileId: profile?.id,
+      avatarUrl: profile?.avatarUrl,
+    });
     setEvents((current) =>
       current.map((event) =>
         event.id === eventId
@@ -824,15 +859,17 @@ export default function App() {
                     ["campsite", "Camping"],
                     ["accommodation", "Accommodation"],
                     ["trails", "Trail run / hike"],
-                    ["food", "Food"],
-                    ["wineries", "Wine tasting / breweries"],
+                    ["eating_out", "Eating out"],
+                    ["eating_in", "Eating in"],
+                    ["wine_tasting", "Wine tasting"],
+                    ["beer_tasting", "Beer tasting"],
                     ["swim", "Swim spots"],
                     ["strava", "Strava"],
                   ].map(([key, label]) => (
                     <label className="toggle-card" key={key}>
                       <input
                         type="checkbox"
-                        checked={mapFilters[key as CategoryKey]}
+                        checked={mapFilters[key as MapFilterKey]}
                         onChange={(event) =>
                           setMapFilters((current) => ({
                             ...current,
@@ -930,6 +967,7 @@ export default function App() {
                 onLogin={handleLogin}
                 onSignUp={handleSignUp}
                 onLogout={handleLogout}
+                onUpdateProfilePhoto={handleUpdateProfilePhoto}
               />
             </div>
           ) : null}
