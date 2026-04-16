@@ -67,6 +67,29 @@ const mapCategory = (row: any): LocationCategory => ({
   strava: row.strava ?? undefined,
 });
 
+const normalizePlaceCategories = (rows: any[]): LocationCategory[] => {
+  const categories = rows.map(mapCategory);
+  const legacyStrava = categories.find(
+    (category) => category.key === "strava" && category.strava,
+  )?.strava;
+  const visibleCategories = categories.filter((category) => category.key !== "strava");
+
+  if (!legacyStrava) {
+    return visibleCategories;
+  }
+
+  const trailIndex = visibleCategories.findIndex(
+    (category) => category.key === "trails" || category.key === "trails_2",
+  );
+  if (trailIndex === -1 || visibleCategories[trailIndex].strava) {
+    return visibleCategories;
+  }
+
+  return visibleCategories.map((category, index) =>
+    index === trailIndex ? { ...category, strava: legacyStrava } : category,
+  );
+};
+
 const mapComment = (row: any): EventComment => ({
   id: row.id,
   name: row.name,
@@ -92,7 +115,7 @@ const mapPlace = (row: any): AdventureEvent => ({
   createdAt: row.created_at.slice(0, 10),
   recommendCount: row.recommend_count ?? 0,
   comments: (row.place_comments ?? []).map(mapComment),
-  categories: (row.place_categories ?? []).map(mapCategory),
+  categories: normalizePlaceCategories(row.place_categories ?? []),
 });
 
 export async function getSession() {

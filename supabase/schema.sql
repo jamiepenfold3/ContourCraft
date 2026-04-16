@@ -65,8 +65,7 @@ create table if not exists public.place_categories (
     'eating_in',
     'wine_tasting',
     'beer_tasting',
-    'swim',
-    'strava'
+    'swim'
   )),
   heading text not null,
   description text not null,
@@ -259,6 +258,53 @@ update public.place_categories
 set key = 'eating_out'
 where key = 'food';
 
+with legacy_strava as (
+  select id, place_id, strava
+  from public.place_categories
+  where key = 'strava'
+),
+target_trails as (
+  select distinct on (legacy_strava.id)
+    legacy_strava.id as strava_id,
+    place_categories.id as trail_id,
+    legacy_strava.strava
+  from legacy_strava
+  join public.place_categories
+    on place_categories.place_id = legacy_strava.place_id
+   and place_categories.key in ('trails', 'trails_2')
+  order by
+    legacy_strava.id,
+    case place_categories.key when 'trails' then 0 else 1 end
+)
+update public.place_categories
+set strava = coalesce(public.place_categories.strava, target_trails.strava)
+from target_trails
+where public.place_categories.id = target_trails.trail_id;
+
+with legacy_strava as (
+  select id, place_id
+  from public.place_categories
+  where key = 'strava'
+),
+target_trails as (
+  select distinct on (legacy_strava.id)
+    legacy_strava.id as strava_id
+  from legacy_strava
+  join public.place_categories
+    on place_categories.place_id = legacy_strava.place_id
+   and place_categories.key in ('trails', 'trails_2')
+  order by
+    legacy_strava.id,
+    case place_categories.key when 'trails' then 0 else 1 end
+)
+delete from public.place_categories
+using target_trails
+where public.place_categories.id = target_trails.strava_id;
+
+update public.place_categories
+set key = 'trails'
+where key = 'strava';
+
 alter table if exists public.place_categories
   add constraint place_categories_key_check
   check (key in (
@@ -270,8 +316,7 @@ alter table if exists public.place_categories
     'eating_in',
     'wine_tasting',
     'beer_tasting',
-    'swim',
-    'strava'
+    'swim'
   ));
 
 alter table if exists public.place_categories

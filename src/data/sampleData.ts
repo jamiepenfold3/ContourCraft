@@ -17,7 +17,6 @@ export const initialAnalytics: AnalyticsSnapshot = {
     wine_tasting: 0,
     beer_tasting: 0,
     swim: 0,
-    strava: 0,
   },
   activeDates: [],
 };
@@ -78,6 +77,17 @@ export const sampleEvents: AdventureEvent[] = [
           url: "https://images.unsplash.com/photo-1464822759023-fed622ff2c3b?auto=format&fit=crop&w=1200&q=80",
         },
         gallery: [],
+        strava: {
+          activityId: "17794007279",
+          activityUrl: "https://www.strava.com/activities/17794007279",
+          title: "Wolfberg Dawn Loop",
+          distance: "14.2 km",
+          elevation: "620 m",
+          duration: "1h 34m",
+          activityDate: "2026-03-29",
+          image:
+            "https://images.unsplash.com/photo-1552674605-db6ffd4facb5?auto=format&fit=crop&w=1200&q=80",
+        },
       },
       {
         key: "eating_in",
@@ -102,29 +112,6 @@ export const sampleEvents: AdventureEvent[] = [
           url: "https://images.unsplash.com/photo-1510812431401-41d2bd2722f3?auto=format&fit=crop&w=1200&q=80",
         },
         gallery: [],
-      },
-      {
-        key: "strava",
-        heading: "Wolfberg Dawn Loop",
-        description:
-          "Saved as the benchmark outing for this camp. The loop is steady, runnable for strong legs, and worth repeating with cooler weather.",
-        headingPhoto: {
-          id: "cederberg-strava-hero",
-          name: "Run screenshot",
-          url: "https://images.unsplash.com/photo-1552674605-db6ffd4facb5?auto=format&fit=crop&w=1200&q=80",
-        },
-        gallery: [],
-        strava: {
-          activityId: "17794007279",
-          activityUrl: "https://www.strava.com/activities/17794007279",
-          title: "Wolfberg Dawn Loop",
-          distance: "14.2 km",
-          elevation: "620 m",
-          duration: "1h 34m",
-          activityDate: "2026-03-29",
-          image:
-            "https://images.unsplash.com/photo-1552674605-db6ffd4facb5?auto=format&fit=crop&w=1200&q=80",
-        },
       },
     ],
   },

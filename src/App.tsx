@@ -51,8 +51,7 @@ type MapFilterKey =
   | "eating_in"
   | "wine_tasting"
   | "beer_tasting"
-  | "swim"
-  | "strava";
+  | "swim";
 
 const currentHashId = () => window.location.hash.replace(/^#location-/, "") || null;
 
@@ -136,7 +135,6 @@ export default function App() {
     wine_tasting: false,
     beer_tasting: false,
     swim: false,
-    strava: false,
   });
   const [searchMode, setSearchMode] = useState<"tags" | "title">("tags");
   const [searchTerm, setSearchTerm] = useState("");
@@ -162,6 +160,13 @@ export default function App() {
   const canViewWildCamping =
     profile?.role === "creator" || profile?.wildCampingAccess === true;
 
+  const resetLoadedPlaceCaches = () => {
+    loadedDetailPlaceIdsRef.current.clear();
+    loadedPreviewCategoryPlaceIdsRef.current.clear();
+    setLoadingDetailPlaceIds(new Set());
+    setLoadingPreviewPlaceIds(new Set());
+  };
+
   const scrollToSection = (section: RefObject<HTMLDivElement>) => {
     window.setTimeout(() => {
       section.current?.scrollIntoView({ behavior: "smooth", block: "start" });
@@ -186,7 +191,10 @@ export default function App() {
         }
 
         const places = await fetchPlaces();
-        if (active) setEvents(sortEvents(places));
+        if (active) {
+          resetLoadedPlaceCaches();
+          setEvents(sortEvents(places));
+        }
       } catch (bootError) {
         if (active) {
           if (isRefreshTokenError(bootError)) {
@@ -194,7 +202,10 @@ export default function App() {
             setProfile(null);
             setFavouritePlaceIds([]);
             const places = await fetchPlaces();
-            if (active) setEvents(sortEvents(places));
+            if (active) {
+              resetLoadedPlaceCaches();
+              setEvents(sortEvents(places));
+            }
             setError("Your login session expired. Please log in again.");
           } else {
             setError(errorMessage(bootError, "Failed to load app."));
@@ -215,7 +226,10 @@ export default function App() {
               setProfile(null);
               setShowAnalytics(false);
               const places = await fetchPlaces();
-              if (active) setEvents(sortEvents(places));
+              if (active) {
+                resetLoadedPlaceCaches();
+                setEvents(sortEvents(places));
+              }
               return;
             }
             const nextProfile = await getProfile(session.user.id);
@@ -223,7 +237,10 @@ export default function App() {
             const favouriteIds = await fetchFavouritePlaceIds(session.user.id);
             if (active) setFavouritePlaceIds(favouriteIds);
             const places = await fetchPlaces();
-            if (active) setEvents(sortEvents(places));
+            if (active) {
+              resetLoadedPlaceCaches();
+              setEvents(sortEvents(places));
+            }
           } catch (authError) {
             if (active) {
               if (isRefreshTokenError(authError)) {
@@ -525,10 +542,7 @@ export default function App() {
   const refreshPlaces = async () => {
     if (!isSupabaseConfigured) return;
     const places = await fetchPlaces();
-    loadedDetailPlaceIdsRef.current.clear();
-    loadedPreviewCategoryPlaceIdsRef.current.clear();
-    setLoadingDetailPlaceIds(new Set());
-    setLoadingPreviewPlaceIds(new Set());
+    resetLoadedPlaceCaches();
     setEvents(sortEvents(places));
   };
 
@@ -846,7 +860,6 @@ export default function App() {
                     ["wine_tasting", "Wine tasting"],
                     ["beer_tasting", "Beer tasting"],
                     ["swim", "Swim spots"],
-                    ["strava", "Strava"],
                   ].map(([key, label]) => (
                     <label className="toggle-card" key={key}>
                       <input
@@ -921,7 +934,8 @@ export default function App() {
                         className="event-preview-image"
                         src={previewPhoto.url}
                         alt={previewPhoto.name}
-                        loading="lazy"
+                        loading="eager"
+                        decoding="async"
                       />
                     ) : isPreviewLoading ? (
                       <span className="event-preview-loading" aria-label="Loading preview photo">
@@ -1060,7 +1074,8 @@ export default function App() {
                             className="event-preview-image"
                             src={previewPhoto.url}
                             alt={previewPhoto.name}
-                            loading="lazy"
+                            loading="eager"
+                            decoding="async"
                           />
                         ) : null}
                         <span>{event.title}</span>

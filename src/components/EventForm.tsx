@@ -53,7 +53,6 @@ const categoryMeta: Array<{ key: CategoryKey; label: string }> = [
   { key: "wine_tasting", label: "Wine tasting" },
   { key: "beer_tasting", label: "Beer tasting" },
   { key: "swim", label: "Swim spots" },
-  { key: "strava", label: "Strava activity" },
 ];
 
 const emptyStrava = (): StravaUpload => ({
@@ -94,6 +93,8 @@ const stravaIdFromUrl = (url: string) => {
   const match = url.match(/activities\/(\d+)/);
   return match?.[1];
 };
+
+const isTrailCategory = (key: CategoryKey) => key === "trails" || key === "trails_2";
 
 const categoriesToDrafts = (event?: AdventureEvent | null) => {
   const drafts = emptyCategories();
@@ -177,9 +178,6 @@ export function EventForm({
 
     return enabledCategories.every(({ key }) => {
       const category = categories[key];
-      if (key === "strava") {
-        return Boolean(category.strava.activityUrl?.trim());
-      }
       return Boolean(category.heading.trim() && category.description.trim() && category.headingPhoto);
     });
   }, [categories, enabledCategories, initialEvent, locationName, needToKnows, pickedPoint, title]);
@@ -194,12 +192,6 @@ export function EventForm({
 
     for (const { key, label } of enabledCategories) {
       const category = categories[key];
-      if (key === "strava") {
-        if (!category.strava.activityUrl?.trim()) {
-          return "Add the Strava activity link.";
-        }
-        continue;
-      }
       if (!category.heading.trim()) return `Add a heading for ${label}.`;
       if (!category.description.trim()) return `Add a note for ${label}.`;
       if (!category.headingPhoto) return `Upload a heading picture for ${label}.`;
@@ -263,16 +255,16 @@ export function EventForm({
 
       return {
         key,
-        heading: key === "strava" ? "Strava activity" : category.heading.trim(),
-        description: key === "strava" ? "Strava activity link" : category.description.trim(),
-        headingPhoto: key === "strava" ? undefined : category.headingPhoto!,
-        gallery: key === "strava" ? [] : category.gallery,
+        heading: category.heading.trim(),
+        description: category.description.trim(),
+        headingPhoto: category.headingPhoto!,
+        gallery: category.gallery,
         strava:
-          key === "strava"
+          isTrailCategory(key) && stravaUrl
             ? {
                 activityUrl: stravaUrl,
                 activityId: stravaIdFromUrl(stravaUrl),
-                title: "Strava activity",
+                title: category.heading.trim(),
               }
             : undefined,
       };
@@ -393,44 +385,41 @@ export function EventForm({
         <section className="category-editor" key={key}>
           <div className="section-title">
             <h3>{label}</h3>
-            {key !== "strava" ? <span className="author-chip">Heading picture required</span> : null}
+            <span className="author-chip">Heading picture required</span>
           </div>
 
-          {key === "strava" ? (
+          <div className="form-grid">
+            <label>
+              Section heading
+              <input value={categories[key].heading} onChange={(event) => updateCategory(key, { heading: event.target.value })} />
+            </label>
+            <label>
+              Heading picture
+              <input type="file" accept="image/*" onChange={(event) => handleHeadingPhoto(key, event)} />
+            </label>
+          </div>
+          <label>
+            Section note
+            <textarea rows={4} value={categories[key].description} onChange={(event) => updateCategory(key, { description: event.target.value })} />
+          </label>
+          {isTrailCategory(key) ? (
             <label>
               Strava activity link
               <input
-                value={categories.strava.strava.activityUrl ?? ""}
+                value={categories[key].strava.activityUrl ?? ""}
                 onChange={(event) =>
-                  updateCategory("strava", {
+                  updateCategory(key, {
                     strava: { activityUrl: event.target.value },
                   })
                 }
                 placeholder="https://www.strava.com/activities/123456789"
               />
             </label>
-          ) : (
-            <>
-              <div className="form-grid">
-                <label>
-                  Section heading
-                  <input value={categories[key].heading} onChange={(event) => updateCategory(key, { heading: event.target.value })} />
-                </label>
-                <label>
-                  Heading picture
-                  <input type="file" accept="image/*" onChange={(event) => handleHeadingPhoto(key, event)} />
-                </label>
-              </div>
-              <label>
-                Section note
-                <textarea rows={4} value={categories[key].description} onChange={(event) => updateCategory(key, { description: event.target.value })} />
-              </label>
-              <label>
-                Gallery images
-                <input type="file" accept="image/*" multiple onChange={(event) => handleGalleryUpload(key, event)} />
-              </label>
-            </>
-          )}
+          ) : null}
+          <label>
+            Gallery images
+            <input type="file" accept="image/*" multiple onChange={(event) => handleGalleryUpload(key, event)} />
+          </label>
         </section>
       ))}
 

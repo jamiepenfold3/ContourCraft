@@ -20,7 +20,7 @@ type EventDetailProps = {
   isLoadingDetails: boolean;
 };
 
-const sectionLabels: Record<CategoryKey, string> = {
+const sectionLabels: Partial<Record<CategoryKey, string>> = {
   campsite: "Campsite",
   accommodation: "Accommodation",
   trails: "Trail run / hike 1",
@@ -30,7 +30,6 @@ const sectionLabels: Record<CategoryKey, string> = {
   wine_tasting: "Wine tasting",
   beer_tasting: "Beer tasting",
   swim: "Swim spots",
-  strava: "Strava activity",
 };
 
 export function EventDetail({
@@ -146,7 +145,7 @@ export function EventDetail({
       </div>
 
       <div className="section-stack">
-        {event.categories.map((category) => (
+        {event.categories.filter((category) => category.key !== "strava").map((category) => (
           <article
             className="category-card"
             key={category.key}
@@ -161,7 +160,7 @@ export function EventDetail({
               />
             ) : null}
             <div className="section-title">
-              <h3>{sectionLabels[category.key]}</h3>
+              <h3>{sectionLabels[category.key] ?? category.heading}</h3>
               <span className="author-chip">{category.heading}</span>
             </div>
             <p>{category.description}</p>
@@ -172,7 +171,7 @@ export function EventDetail({
                 ))}
               </div>
             ) : null}
-            {category.key === "strava" && category.strava ? (
+            {category.strava ? (
               <div className="strava-card">
                 <div className="section-title">
                   <strong>{category.strava.title ?? "Strava activity"}</strong>
