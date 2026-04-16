@@ -126,8 +126,19 @@ export function AuthSheet({
         </div>
         <label>
           Profile picture
-          <input type="file" accept="image/*" onChange={handleProfilePhoto} />
+          <input
+            type="file"
+            accept="image/*"
+            disabled={isPhotoSaving}
+            onChange={handleProfilePhoto}
+          />
         </label>
+        {isPhotoSaving ? (
+          <div className="loading-inline" role="status" aria-live="polite">
+            <span className="loading-spinner" aria-hidden="true" />
+            <span>Saving profile picture</span>
+          </div>
+        ) : null}
         {profile.avatarUrl ? (
           <button
             type="button"

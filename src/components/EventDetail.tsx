@@ -17,6 +17,7 @@ type EventDetailProps = {
   onToggleFavourite: (eventId: string) => void;
   isFavourited: boolean;
   canFavourite: boolean;
+  isLoadingDetails: boolean;
 };
 
 const sectionLabels: Record<CategoryKey, string> = {
@@ -43,6 +44,7 @@ export function EventDetail({
   onToggleFavourite,
   isFavourited,
   canFavourite,
+  isLoadingDetails,
 }: EventDetailProps) {
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
@@ -119,6 +121,13 @@ export function EventDetail({
           </button>
         </div>
       </div>
+
+      {isLoadingDetails ? (
+        <div className="loading-inline" role="status" aria-live="polite">
+          <span className="loading-spinner" aria-hidden="true" />
+          <span>Loading place details</span>
+        </div>
+      ) : null}
 
       <div className="panel-heading">
         <div>

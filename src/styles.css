@@ -267,6 +267,41 @@ img {
   grid-column: 1;
 }
 
+.event-preview-loading {
+  width: 84px;
+  height: 84px;
+  border-radius: 12px;
+  grid-row: 1 / span 3;
+  grid-column: 1;
+  display: grid;
+  place-items: center;
+  background: rgba(24, 53, 40, 0.05);
+}
+
+.loading-inline {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  color: var(--text-soft);
+  font-size: 0.92rem;
+}
+
+.loading-spinner {
+  width: 18px;
+  height: 18px;
+  border-radius: 999px;
+  border: 3px solid rgba(41, 111, 82, 0.18);
+  border-top-color: var(--accent);
+  animation: spin 760ms linear infinite;
+  flex: 0 0 auto;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
 .search-panel {
   gap: 12px;
 }

@@ -16,16 +16,6 @@ type PlaceInsert = Omit<AdventureEvent, "id" | "createdAt" | "createdBy" | "crea
 };
 
 const INITIAL_PLACE_LIMIT = 250;
-const PLACE_ID_BATCH_SIZE = 50;
-
-const chunksOf = <T,>(items: T[], size: number) => {
-  const chunks: T[][] = [];
-  for (let index = 0; index < items.length; index += size) {
-    chunks.push(items.slice(index, index + size));
-  }
-  return chunks;
-};
-
 const ensureClient = () => {
   if (!supabase) {
     throw new Error("Supabase is not configured.");
@@ -65,7 +55,7 @@ const mapProfile = (row: any): AppProfile => ({
 const mapCategory = (row: any): LocationCategory => ({
   key: normalizeCategoryKey(row.key),
   heading: row.heading,
-  description: row.description,
+  description: row.description ?? "",
   headingPhoto: row.heading_photo_url
     ? {
         id: `${row.id}-heading`,
@@ -229,7 +219,13 @@ export async function fetchPlaces() {
         tags,
         created_at,
         created_by,
-        recommend_count
+        recommend_count,
+        place_categories (
+          id,
+          place_id,
+          key,
+          heading
+        )
       `,
     )
     .order("created_at", { ascending: false })
@@ -240,7 +236,7 @@ export async function fetchPlaces() {
   return (placeRows ?? []).map((place) =>
     mapPlace({
       ...place,
-      place_categories: [],
+      place_categories: place.place_categories ?? [],
       place_comments: [],
     }),
   );
@@ -273,31 +269,6 @@ export async function fetchPlacePreviewCategories(placeIds: string[]) {
     ...category,
     key: normalizeCategoryKey(category.key),
   }));
-}
-
-export async function fetchPlaceCategoryKeys(placeIds: string[]) {
-  if (!placeIds.length) {
-    return [];
-  }
-
-  const client = ensureClient();
-  const results = await Promise.all(
-    chunksOf(placeIds, PLACE_ID_BATCH_SIZE).map((placeIdBatch) =>
-      client
-        .from("place_categories")
-        .select("id, place_id, key, heading")
-        .in("place_id", placeIdBatch),
-    ),
-  );
-
-  const failedResult = results.find((result) => result.error);
-  if (failedResult?.error) throw failedResult.error;
-  return results.flatMap((result) =>
-    (result.data ?? []).map((category) => ({
-      ...category,
-      key: normalizeCategoryKey(category.key),
-    })),
-  );
 }
 
 export async function fetchPlaceDetails(placeId: string) {

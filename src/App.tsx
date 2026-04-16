@@ -14,7 +14,6 @@ import {
   deletePlace,
   fetchAnalytics,
   fetchFavouritePlaceIds,
-  fetchPlaceCategoryKeys,
   fetchPlaceDetails,
   fetchPlacePreviewCategories,
   fetchPlaces,
@@ -144,13 +143,17 @@ export default function App() {
   const [selectedTag, setSelectedTag] = useState("all");
   const [error, setError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(isSupabaseConfigured);
-  const [areCategoryFiltersReady, setAreCategoryFiltersReady] = useState(!isSupabaseConfigured);
+  const [loadingDetailPlaceIds, setLoadingDetailPlaceIds] = useState<Set<string>>(
+    () => new Set(),
+  );
+  const [loadingPreviewPlaceIds, setLoadingPreviewPlaceIds] = useState<Set<string>>(
+    () => new Set(),
+  );
   const authSectionRef = useRef<HTMLDivElement | null>(null);
   const createSectionRef = useRef<HTMLDivElement | null>(null);
   const manageSectionRef = useRef<HTMLDivElement | null>(null);
   const analyticsSectionRef = useRef<HTMLDivElement | null>(null);
   const favouritesSectionRef = useRef<HTMLDivElement | null>(null);
-  const loadedCategoryKeyPlaceIdsRef = useRef(new Set<string>());
   const loadedDetailPlaceIdsRef = useRef(new Set<string>());
   const loadedPreviewCategoryPlaceIdsRef = useRef(new Set<string>());
 
@@ -316,16 +319,12 @@ export default function App() {
       return visibleEvents;
     }
 
-    if (!areCategoryFiltersReady) {
-      return visibleEvents;
-    }
-
     return visibleEvents.filter((event) =>
       activeFilters.every((filter) =>
         event.categories.some((category) => categoryMatchesFilter(category, filter)),
       ),
     );
-  }, [areCategoryFiltersReady, mapFilters, visibleEvents]);
+  }, [mapFilters, visibleEvents]);
 
   const allTags = useMemo(
     () =>
@@ -358,70 +357,7 @@ export default function App() {
   const previewEvents = useMemo(() => filteredEvents.slice(0, 10), [filteredEvents]);
 
   useEffect(() => {
-    if (!isSupabaseConfigured) {
-      return;
-    }
-
-    if (!visibleEvents.length) {
-      setAreCategoryFiltersReady(true);
-      return;
-    }
-
-    const unloadedPlaceIds = visibleEvents
-      .map((event) => event.id)
-      .filter((placeId) => !loadedCategoryKeyPlaceIdsRef.current.has(placeId));
-    if (!unloadedPlaceIds.length) {
-      setAreCategoryFiltersReady(true);
-      return;
-    }
-
-    setAreCategoryFiltersReady(false);
-    unloadedPlaceIds.forEach((placeId) => {
-      loadedCategoryKeyPlaceIdsRef.current.add(placeId);
-    });
-
-    let active = true;
-    void fetchPlaceCategoryKeys(unloadedPlaceIds)
-      .then((categoryRows) => {
-        if (!active) return;
-        setEvents((current) =>
-          current.map((event) => {
-            if (!unloadedPlaceIds.includes(event.id)) return event;
-            const nextCategories = categoryRows
-              .filter((category) => category.place_id === event.id)
-              .map((category) => ({
-                key: category.key,
-                heading: category.heading,
-                description: "",
-                gallery: [],
-                strava: undefined,
-              }));
-
-            return {
-              ...event,
-              categories: mergeCategoriesByKey(event.categories, nextCategories),
-            };
-          }),
-        );
-        setAreCategoryFiltersReady(true);
-      })
-      .catch((categoryError) => {
-        unloadedPlaceIds.forEach((placeId) => {
-          loadedCategoryKeyPlaceIdsRef.current.delete(placeId);
-        });
-        if (active) {
-          setError(errorMessage(categoryError, "Failed to load place filters."));
-          setAreCategoryFiltersReady(true);
-        }
-      });
-
-    return () => {
-      active = false;
-    };
-  }, [visibleEvents]);
-
-  useEffect(() => {
-    if (!isSupabaseConfigured || selectedEventId || !areCategoryFiltersReady) {
+    if (!isSupabaseConfigured || selectedEventId) {
       return;
     }
 
@@ -434,6 +370,11 @@ export default function App() {
 
     unloadedPlaceIds.forEach((placeId) => {
       loadedPreviewCategoryPlaceIdsRef.current.add(placeId);
+    });
+    setLoadingPreviewPlaceIds((current) => {
+      const next = new Set(current);
+      unloadedPlaceIds.forEach((placeId) => next.add(placeId));
+      return next;
     });
 
     let active = true;
@@ -466,10 +407,20 @@ export default function App() {
             };
           }),
         );
+        setLoadingPreviewPlaceIds((current) => {
+          const next = new Set(current);
+          unloadedPlaceIds.forEach((placeId) => next.delete(placeId));
+          return next;
+        });
       })
       .catch((previewError) => {
         unloadedPlaceIds.forEach((placeId) => {
           loadedPreviewCategoryPlaceIdsRef.current.delete(placeId);
+        });
+        setLoadingPreviewPlaceIds((current) => {
+          const next = new Set(current);
+          unloadedPlaceIds.forEach((placeId) => next.delete(placeId));
+          return next;
         });
         if (active) {
           setError(errorMessage(previewError, "Failed to load place previews."));
@@ -479,7 +430,7 @@ export default function App() {
     return () => {
       active = false;
     };
-  }, [areCategoryFiltersReady, previewEvents, selectedEventId]);
+  }, [previewEvents, selectedEventId]);
 
   const activeMapFilterKeys = useMemo(
     () =>
@@ -533,18 +484,34 @@ export default function App() {
 
     let active = true;
     loadedDetailPlaceIdsRef.current.add(selectedPlaceId);
+    setLoadingDetailPlaceIds((current) => new Set(current).add(selectedPlaceId));
 
     void fetchPlaceDetails(selectedPlaceId)
       .then((detailedPlace) => {
         if (!active) return;
         setEvents((current) =>
           current.map((event) =>
-            event.id === selectedPlaceId ? detailedPlace : event,
+            event.id === selectedPlaceId
+              ? {
+                  ...detailedPlace,
+                  categories: mergeCategoriesByKey(event.categories, detailedPlace.categories),
+                }
+              : event,
           ),
         );
+        setLoadingDetailPlaceIds((current) => {
+          const next = new Set(current);
+          next.delete(selectedPlaceId);
+          return next;
+        });
       })
       .catch((detailsError) => {
         loadedDetailPlaceIdsRef.current.delete(selectedPlaceId);
+        setLoadingDetailPlaceIds((current) => {
+          const next = new Set(current);
+          next.delete(selectedPlaceId);
+          return next;
+        });
         if (active) {
           setError(errorMessage(detailsError, "Failed to load place details."));
         }
@@ -558,10 +525,10 @@ export default function App() {
   const refreshPlaces = async () => {
     if (!isSupabaseConfigured) return;
     const places = await fetchPlaces();
-    loadedCategoryKeyPlaceIdsRef.current.clear();
     loadedDetailPlaceIdsRef.current.clear();
     loadedPreviewCategoryPlaceIdsRef.current.clear();
-    setAreCategoryFiltersReady(false);
+    setLoadingDetailPlaceIds(new Set());
+    setLoadingPreviewPlaceIds(new Set());
     setEvents(sortEvents(places));
   };
 
@@ -941,6 +908,7 @@ export default function App() {
               {previewEvents.map((event) => {
                 const previewCategory = getCampingPreviewCategory(event);
                 const previewPhoto = previewCategory?.headingPhoto;
+                const isPreviewLoading = loadingPreviewPlaceIds.has(event.id);
                 return (
                   <button
                     type="button"
@@ -955,6 +923,10 @@ export default function App() {
                         alt={previewPhoto.name}
                         loading="lazy"
                       />
+                    ) : isPreviewLoading ? (
+                      <span className="event-preview-loading" aria-label="Loading preview photo">
+                        <span className="loading-spinner" aria-hidden="true" />
+                      </span>
                     ) : null}
                     <span>{event.title}</span>
                     <small>{event.locationName}</small>
@@ -999,6 +971,7 @@ export default function App() {
               onToggleFavourite={handleToggleFavourite}
               isFavourited={favouritePlaceIds.includes(selectedEvent.id)}
               canFavourite={Boolean(profile)}
+              isLoadingDetails={loadingDetailPlaceIds.has(selectedEvent.id)}
             />
           ) : null}
 
