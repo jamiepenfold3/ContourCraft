@@ -74,12 +74,16 @@ alter table if exists public.place_categories
   alter column heading_photo_name drop not null,
   alter column heading_photo_url drop not null;
 
+alter table if exists public.place_categories
+  add column if not exists heading_photo_thumb_url text;
+
 alter table if exists public.places
   add column if not exists contact_email text;
 
 alter table if exists public.profiles
   add column if not exists avatar_photo_name text,
-  add column if not exists avatar_url text;
+  add column if not exists avatar_url text,
+  add column if not exists avatar_thumb_url text;
 
 alter table if exists public.place_comments
   add column if not exists profile_id uuid references public.profiles(id) on delete set null,
@@ -196,6 +200,44 @@ on public.places(created_by);
 
 create index if not exists places_place_type_idx
 on public.places(place_type);
+
+insert into storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
+values (
+  'place-photos',
+  'place-photos',
+  true,
+  10485760,
+  array['image/jpeg', 'image/png', 'image/webp', 'image/gif']
+)
+on conflict (id) do update
+set
+  public = excluded.public,
+  file_size_limit = excluded.file_size_limit,
+  allowed_mime_types = excluded.allowed_mime_types;
+
+drop policy if exists "public can view place photos" on storage.objects;
+create policy "public can view place photos"
+on storage.objects for select
+using (bucket_id = 'place-photos');
+
+drop policy if exists "authenticated users can upload place photos" on storage.objects;
+create policy "authenticated users can upload place photos"
+on storage.objects for insert
+to authenticated
+with check (bucket_id = 'place-photos');
+
+drop policy if exists "authenticated users can update place photos" on storage.objects;
+create policy "authenticated users can update place photos"
+on storage.objects for update
+to authenticated
+using (bucket_id = 'place-photos')
+with check (bucket_id = 'place-photos');
+
+drop policy if exists "authenticated users can delete place photos" on storage.objects;
+create policy "authenticated users can delete place photos"
+on storage.objects for delete
+to authenticated
+using (bucket_id = 'place-photos');
 
 create table if not exists public.newsletter_subscribers (
   email text primary key,

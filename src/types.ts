@@ -2,6 +2,8 @@ export type PhotoAsset = {
   id: string;
   name: string;
   url: string;
+  thumbUrl?: string;
+  storagePath?: string;
 };
 
 export type StravaUpload = {

@@ -8,6 +8,7 @@ create table if not exists public.profiles (
   wild_camping_access boolean not null default false,
   avatar_photo_name text,
   avatar_url text,
+  avatar_thumb_url text,
   created_at timestamptz not null default now()
 );
 
@@ -71,6 +72,7 @@ create table if not exists public.place_categories (
   description text not null,
   heading_photo_name text,
   heading_photo_url text,
+  heading_photo_thumb_url text,
   gallery jsonb not null default '[]'::jsonb,
   strava jsonb
 );
@@ -144,6 +146,44 @@ on public.places(created_by);
 
 create index if not exists places_place_type_idx
 on public.places(place_type);
+
+insert into storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
+values (
+  'place-photos',
+  'place-photos',
+  true,
+  10485760,
+  array['image/jpeg', 'image/png', 'image/webp', 'image/gif']
+)
+on conflict (id) do update
+set
+  public = excluded.public,
+  file_size_limit = excluded.file_size_limit,
+  allowed_mime_types = excluded.allowed_mime_types;
+
+drop policy if exists "public can view place photos" on storage.objects;
+create policy "public can view place photos"
+on storage.objects for select
+using (bucket_id = 'place-photos');
+
+drop policy if exists "authenticated users can upload place photos" on storage.objects;
+create policy "authenticated users can upload place photos"
+on storage.objects for insert
+to authenticated
+with check (bucket_id = 'place-photos');
+
+drop policy if exists "authenticated users can update place photos" on storage.objects;
+create policy "authenticated users can update place photos"
+on storage.objects for update
+to authenticated
+using (bucket_id = 'place-photos')
+with check (bucket_id = 'place-photos');
+
+drop policy if exists "authenticated users can delete place photos" on storage.objects;
+create policy "authenticated users can delete place photos"
+on storage.objects for delete
+to authenticated
+using (bucket_id = 'place-photos');
 
 create policy "profiles selectable by owner"
 on public.profiles for select
@@ -322,6 +362,12 @@ alter table if exists public.place_categories
 alter table if exists public.place_categories
   alter column heading_photo_name drop not null,
   alter column heading_photo_url drop not null;
+
+alter table if exists public.place_categories
+  add column if not exists heading_photo_thumb_url text;
+
+alter table if exists public.profiles
+  add column if not exists avatar_thumb_url text;
 
 create policy "public can view comments"
 on public.place_comments for select

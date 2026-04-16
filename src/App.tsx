@@ -154,17 +154,63 @@ export default function App() {
   const favouritesSectionRef = useRef<HTMLDivElement | null>(null);
   const loadedDetailPlaceIdsRef = useRef(new Set<string>());
   const loadedPreviewCategoryPlaceIdsRef = useRef(new Set<string>());
+  const previewCategoryCacheRef = useRef(new Map<string, LocationCategory[]>());
+  const detailPlaceCacheRef = useRef(new Map<string, AdventureEvent>());
 
   const canCreate = profile?.role === "creator";
   const canAccessAnalytics = profile?.role === "creator";
   const canViewWildCamping =
     profile?.role === "creator" || profile?.wildCampingAccess === true;
 
-  const resetLoadedPlaceCaches = () => {
-    loadedDetailPlaceIdsRef.current.clear();
-    loadedPreviewCategoryPlaceIdsRef.current.clear();
+  const clearLoadingPlaceState = () => {
     setLoadingDetailPlaceIds(new Set());
     setLoadingPreviewPlaceIds(new Set());
+  };
+
+  const applyCachedPlaceData = (places: AdventureEvent[]) =>
+    places.map((place) => {
+      const cachedPreviewCategories = previewCategoryCacheRef.current.get(place.id) ?? [];
+      const cachedDetail = detailPlaceCacheRef.current.get(place.id);
+      if (cachedPreviewCategories.length) {
+        loadedPreviewCategoryPlaceIdsRef.current.add(place.id);
+      }
+      if (cachedDetail) {
+        loadedDetailPlaceIdsRef.current.add(place.id);
+      }
+      const mergedPreviewCategories = mergeCategoriesByKey(
+        place.categories,
+        cachedPreviewCategories,
+      );
+
+      if (!cachedDetail) {
+        return {
+          ...place,
+          categories: mergedPreviewCategories,
+        };
+      }
+
+      return {
+        ...place,
+        about: cachedDetail.about,
+        needToKnows: cachedDetail.needToKnows,
+        contactEmail: cachedDetail.contactEmail,
+        createdBy: cachedDetail.createdBy,
+        createdById: cachedDetail.createdById,
+        comments: cachedDetail.comments,
+        categories: mergeCategoriesByKey(mergedPreviewCategories, cachedDetail.categories),
+      };
+    });
+
+  const setFetchedPlaces = (places: AdventureEvent[]) => {
+    clearLoadingPlaceState();
+    setEvents(sortEvents(applyCachedPlaceData(places)));
+  };
+
+  const invalidatePlaceCache = (placeId: string) => {
+    loadedDetailPlaceIdsRef.current.delete(placeId);
+    loadedPreviewCategoryPlaceIdsRef.current.delete(placeId);
+    previewCategoryCacheRef.current.delete(placeId);
+    detailPlaceCacheRef.current.delete(placeId);
   };
 
   const scrollToSection = (section: RefObject<HTMLDivElement>) => {
@@ -192,8 +238,7 @@ export default function App() {
 
         const places = await fetchPlaces();
         if (active) {
-          resetLoadedPlaceCaches();
-          setEvents(sortEvents(places));
+          setFetchedPlaces(places);
         }
       } catch (bootError) {
         if (active) {
@@ -203,8 +248,7 @@ export default function App() {
             setFavouritePlaceIds([]);
             const places = await fetchPlaces();
             if (active) {
-              resetLoadedPlaceCaches();
-              setEvents(sortEvents(places));
+              setFetchedPlaces(places);
             }
             setError("Your login session expired. Please log in again.");
           } else {
@@ -227,8 +271,7 @@ export default function App() {
               setShowAnalytics(false);
               const places = await fetchPlaces();
               if (active) {
-                resetLoadedPlaceCaches();
-                setEvents(sortEvents(places));
+                setFetchedPlaces(places);
               }
               return;
             }
@@ -238,8 +281,7 @@ export default function App() {
             if (active) setFavouritePlaceIds(favouriteIds);
             const places = await fetchPlaces();
             if (active) {
-              resetLoadedPlaceCaches();
-              setEvents(sortEvents(places));
+              setFetchedPlaces(places);
             }
           } catch (authError) {
             if (active) {
@@ -411,12 +453,20 @@ export default function App() {
                   ? {
                       id: `${category.id}-heading`,
                       name: category.heading_photo_name ?? category.heading,
-                      url: category.heading_photo_url,
+                      url: category.heading_photo_thumb_url ?? category.heading_photo_url,
+                      thumbUrl: category.heading_photo_thumb_url ?? undefined,
                     }
                   : undefined,
                 gallery: [],
                 strava: undefined,
               }));
+            previewCategoryCacheRef.current.set(
+              event.id,
+              mergeCategoriesByKey(
+                previewCategoryCacheRef.current.get(event.id) ?? [],
+                nextCategories,
+              ),
+            );
 
             return {
               ...event,
@@ -506,12 +556,20 @@ export default function App() {
     void fetchPlaceDetails(selectedPlaceId)
       .then((detailedPlace) => {
         if (!active) return;
+        const cachedDetail = {
+          ...detailedPlace,
+          categories: mergeCategoriesByKey(
+            previewCategoryCacheRef.current.get(selectedPlaceId) ?? [],
+            detailedPlace.categories,
+          ),
+        };
+        detailPlaceCacheRef.current.set(selectedPlaceId, cachedDetail);
         setEvents((current) =>
           current.map((event) =>
             event.id === selectedPlaceId
               ? {
-                  ...detailedPlace,
-                  categories: mergeCategoriesByKey(event.categories, detailedPlace.categories),
+                  ...cachedDetail,
+                  categories: mergeCategoriesByKey(event.categories, cachedDetail.categories),
                 }
               : event,
           ),
@@ -542,8 +600,7 @@ export default function App() {
   const refreshPlaces = async () => {
     if (!isSupabaseConfigured) return;
     const places = await fetchPlaces();
-    resetLoadedPlaceCaches();
-    setEvents(sortEvents(places));
+    setFetchedPlaces(places);
   };
 
   const handleLogin = async (email: string, password: string) => {
@@ -592,6 +649,8 @@ export default function App() {
     if (!profile) return;
     try {
       const created = await createPlace(profile.id, event);
+      detailPlaceCacheRef.current.set(created.id, created);
+      loadedDetailPlaceIdsRef.current.add(created.id);
       setEvents((current) => sortEvents([created, ...current]));
       setDraftPoint(null);
       setShowCreateForm(false);
@@ -618,7 +677,10 @@ export default function App() {
     photoCount: number,
   ) => {
     if (!profile) return;
-    await updatePlace(profile.id, eventId, event);
+    const updated = await updatePlace(profile.id, eventId, event);
+    invalidatePlaceCache(eventId);
+    detailPlaceCacheRef.current.set(eventId, updated);
+    loadedDetailPlaceIdsRef.current.add(eventId);
     await refreshPlaces();
     setEditingEventId(null);
     setShowCreateForm(false);
@@ -636,6 +698,7 @@ export default function App() {
     const confirmed = window.confirm("Delete this entry? This cannot be undone.");
     if (!confirmed) return;
     await deletePlace(profile.id, eventId);
+    invalidatePlaceCache(eventId);
     setEvents((current) => current.filter((event) => event.id !== eventId));
     if (selectedEventId === eventId) {
       setSelectedEventId(null);
@@ -932,7 +995,7 @@ export default function App() {
                     {previewPhoto ? (
                       <img
                         className="event-preview-image"
-                        src={previewPhoto.url}
+                        src={previewPhoto.thumbUrl ?? previewPhoto.url}
                         alt={previewPhoto.name}
                         loading="eager"
                         decoding="async"
@@ -1072,7 +1135,7 @@ export default function App() {
                         {previewPhoto ? (
                           <img
                             className="event-preview-image"
-                            src={previewPhoto.url}
+                            src={previewPhoto.thumbUrl ?? previewPhoto.url}
                             alt={previewPhoto.name}
                             loading="eager"
                             decoding="async"

@@ -6,6 +6,7 @@ import {
   EventComment,
   CategoryKey,
   LocationCategory,
+  PhotoAsset,
   PlaceType,
 } from "../types";
 import { initialAnalytics } from "../data/sampleData";
@@ -16,12 +17,80 @@ type PlaceInsert = Omit<AdventureEvent, "id" | "createdAt" | "createdBy" | "crea
 };
 
 const INITIAL_PLACE_LIMIT = 250;
+const PHOTO_BUCKET = "place-photos";
 const ensureClient = () => {
   if (!supabase) {
     throw new Error("Supabase is not configured.");
   }
   return supabase;
 };
+
+const isDataUrl = (value: string) => value.startsWith("data:");
+
+const safeFileName = (name: string) =>
+  name
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9._-]+/g, "-")
+    .replace(/^-+|-+$/g, "") || "photo";
+
+const dataUrlToBlob = async (dataUrl: string) => {
+  const response = await fetch(dataUrl);
+  return response.blob();
+};
+
+const getPublicStorageUrl = (path: string, transform?: { width: number; quality: number }) => {
+  const client = ensureClient();
+  const { data } = client.storage.from(PHOTO_BUCKET).getPublicUrl(
+    path,
+    transform
+      ? {
+          transform: {
+            width: transform.width,
+            quality: transform.quality,
+          },
+        }
+      : undefined,
+  );
+  return data.publicUrl;
+};
+
+const uploadPhotoAsset = async (
+  asset: PhotoAsset | undefined,
+  pathPrefix: string,
+  thumbWidth: number,
+) => {
+  if (!asset || !isDataUrl(asset.url)) {
+    return asset;
+  }
+
+  const client = ensureClient();
+  const blob = await dataUrlToBlob(asset.url);
+  const path = `${pathPrefix}/${crypto.randomUUID()}-${safeFileName(asset.name)}`;
+  const { error } = await client.storage.from(PHOTO_BUCKET).upload(path, blob, {
+    cacheControl: "31536000",
+    contentType: blob.type || "image/jpeg",
+    upsert: true,
+  });
+  if (error) throw error;
+
+  return {
+    ...asset,
+    id: path,
+    url: getPublicStorageUrl(path),
+    thumbUrl: getPublicStorageUrl(path, { width: thumbWidth, quality: 70 }),
+    storagePath: path,
+  };
+};
+
+const uploadPhotoAssets = async (
+  assets: PhotoAsset[],
+  pathPrefix: string,
+  thumbWidth: number,
+) =>
+  Promise.all(
+    assets.map((asset) => uploadPhotoAsset(asset, pathPrefix, thumbWidth) as Promise<PhotoAsset>),
+  );
 
 const getAuthRedirectTo = () => {
   const configuredRedirect = import.meta.env.VITE_AUTH_REDIRECT_URL?.trim();
@@ -49,7 +118,7 @@ const mapProfile = (row: any): AppProfile => ({
   role: row.role,
   wildCampingAccess: Boolean(row.wild_camping_access),
   avatarPhotoName: row.avatar_photo_name ?? undefined,
-  avatarUrl: row.avatar_url ?? undefined,
+  avatarUrl: row.avatar_thumb_url ?? row.avatar_url ?? undefined,
 });
 
 const mapCategory = (row: any): LocationCategory => ({
@@ -61,6 +130,7 @@ const mapCategory = (row: any): LocationCategory => ({
         id: `${row.id}-heading`,
         name: row.heading_photo_name ?? row.heading,
         url: row.heading_photo_url,
+        thumbUrl: row.heading_photo_thumb_url ?? undefined,
       }
     : undefined,
   gallery: Array.isArray(row.gallery) ? row.gallery : [],
@@ -89,6 +159,35 @@ const normalizePlaceCategories = (rows: any[]): LocationCategory[] => {
     index === trailIndex ? { ...category, strava: legacyStrava } : category,
   );
 };
+
+const uploadCategoryPhotos = async (placeId: string, categories: LocationCategory[]) =>
+  Promise.all(
+    categories.map(async (category) => {
+      const categoryPrefix = `places/${placeId}/${category.key}`;
+      const [headingPhoto, gallery] = await Promise.all([
+        uploadPhotoAsset(category.headingPhoto, `${categoryPrefix}/heading`, 720),
+        uploadPhotoAssets(category.gallery, `${categoryPrefix}/gallery`, 480),
+      ]);
+
+      return {
+        ...category,
+        headingPhoto,
+        gallery,
+      };
+    }),
+  );
+
+const categoryToRow = (placeId: string, category: LocationCategory) => ({
+  place_id: placeId,
+  key: category.key,
+  heading: category.heading,
+  description: category.description,
+  heading_photo_name: category.headingPhoto?.name ?? null,
+  heading_photo_url: category.headingPhoto?.url ?? null,
+  heading_photo_thumb_url: category.headingPhoto?.thumbUrl ?? category.headingPhoto?.url ?? null,
+  gallery: category.gallery,
+  strava: category.strava ?? null,
+});
 
 const mapComment = (row: any): EventComment => ({
   id: row.id,
@@ -134,7 +233,7 @@ export async function getProfile(userId: string) {
   const client = ensureClient();
   const { data, error } = await client
     .from("profiles")
-    .select("id, email, full_name, role, wild_camping_access, avatar_photo_name, avatar_url")
+    .select("id, email, full_name, role, wild_camping_access, avatar_photo_name, avatar_url, avatar_thumb_url")
     .eq("id", userId)
     .single();
 
@@ -176,6 +275,7 @@ export async function signUpViewer(
       wild_camping_access: false,
       avatar_photo_name: null,
       avatar_url: null,
+      avatar_thumb_url: null,
     });
     if (profileError) throw profileError;
   }
@@ -190,14 +290,26 @@ export async function updateProfilePhoto(
   photo: { name: string; url: string } | null,
 ) {
   const client = ensureClient();
+  const uploadedPhoto = photo
+    ? await uploadPhotoAsset(
+        {
+          id: `${userId}-avatar`,
+          name: photo.name,
+          url: photo.url,
+        },
+        `profiles/${userId}`,
+        160,
+      )
+    : null;
   const { data, error } = await client
     .from("profiles")
     .update({
-      avatar_photo_name: photo?.name ?? null,
-      avatar_url: photo?.url ?? null,
+      avatar_photo_name: uploadedPhoto?.name ?? null,
+      avatar_url: uploadedPhoto?.url ?? null,
+      avatar_thumb_url: uploadedPhoto?.thumbUrl ?? null,
     })
     .eq("id", userId)
-    .select("id, email, full_name, role, wild_camping_access, avatar_photo_name, avatar_url")
+    .select("id, email, full_name, role, wild_camping_access, avatar_photo_name, avatar_url, avatar_thumb_url")
     .single();
 
   if (error) throw error;
@@ -276,12 +388,13 @@ export async function fetchPlacePreviewCategories(placeIds: string[]) {
     .select(
       `
         id,
-        place_id,
-        key,
-        heading,
-        description,
-        heading_photo_name,
-        heading_photo_url
+          place_id,
+          key,
+          heading,
+          description,
+          heading_photo_name,
+          heading_photo_url,
+          heading_photo_thumb_url
       `,
     )
     .in("place_id", placeIds)
@@ -333,6 +446,7 @@ export async function fetchPlaceDetails(placeId: string) {
           description,
           heading_photo_name,
           heading_photo_url,
+          heading_photo_thumb_url,
           gallery,
           strava
         `,
@@ -378,16 +492,8 @@ export async function createPlace(userId: string, place: PlaceInsert) {
 
   if (placeError) throw placeError;
 
-  const categoryRows = place.categories.map((category) => ({
-    place_id: placeRow.id,
-    key: category.key,
-    heading: category.heading,
-    description: category.description,
-    heading_photo_name: category.headingPhoto?.name ?? null,
-    heading_photo_url: category.headingPhoto?.url ?? null,
-    gallery: category.gallery,
-    strava: category.strava ?? null,
-  }));
+  const uploadedCategories = await uploadCategoryPhotos(placeRow.id, place.categories);
+  const categoryRows = uploadedCategories.map((category) => categoryToRow(placeRow.id, category));
 
   if (categoryRows.length) {
     const { error: categoryError } = await client
@@ -398,6 +504,7 @@ export async function createPlace(userId: string, place: PlaceInsert) {
 
   return {
     ...place,
+    categories: uploadedCategories,
     id: placeRow.id,
     createdBy: place.createdByName,
     createdById: userId,
@@ -436,16 +543,8 @@ export async function updatePlace(
     .eq("place_id", placeId);
   if (deleteCategoriesError) throw deleteCategoriesError;
 
-  const categoryRows = place.categories.map((category) => ({
-    place_id: placeId,
-    key: category.key,
-    heading: category.heading,
-    description: category.description,
-    heading_photo_name: category.headingPhoto?.name ?? null,
-    heading_photo_url: category.headingPhoto?.url ?? null,
-    gallery: category.gallery,
-    strava: category.strava ?? null,
-  }));
+  const uploadedCategories = await uploadCategoryPhotos(placeId, place.categories);
+  const categoryRows = uploadedCategories.map((category) => categoryToRow(placeId, category));
 
   if (categoryRows.length) {
     const { error: categoryError } = await client
@@ -456,6 +555,7 @@ export async function updatePlace(
 
   return {
     ...place,
+    categories: uploadedCategories,
     id: placeId,
     createdBy: place.createdByName,
     createdById: userId,
