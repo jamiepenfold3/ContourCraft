@@ -359,7 +359,11 @@ export async function fetchPlaces() {
           id,
           place_id,
           key,
-          heading
+          heading,
+          description,
+          heading_photo_name,
+          heading_photo_url,
+          heading_photo_thumb_url
         )
       `,
     )

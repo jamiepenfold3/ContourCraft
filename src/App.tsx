@@ -990,7 +990,7 @@ export default function App() {
             <div className="event-list">
               {previewEvents.map((event) => {
                 const previewCategory = getCampingPreviewCategory(event);
-                const previewPhoto = previewCategory?.headingPhoto;
+                const previewPhoto = previewCategory?.headingPhoto ?? getListPreviewPhoto(event);
                 const isPreviewLoading = loadingPreviewPlaceIds.has(event.id);
                 return (
                   <button
