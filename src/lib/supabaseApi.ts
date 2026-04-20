@@ -397,7 +397,8 @@ export async function fetchPlacePreviewCategories(placeIds: string[]) {
           heading_photo_thumb_url
       `,
     )
-    .in("place_id", placeIds);
+    .in("place_id", placeIds)
+    .in("key", ["campsite", "accommodation"]);
 
   if (categoryError) throw categoryError;
   return (categoryRows ?? []).map((category) => ({

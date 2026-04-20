@@ -130,6 +130,31 @@ const handlePreviewImageError = (
   imageEvent.currentTarget.src = fallbackUrl;
 };
 
+type PreviewCategoryRow = Awaited<ReturnType<typeof fetchPlacePreviewCategories>>[number];
+
+const mapPreviewCategories = (categoryRows: PreviewCategoryRow[], placeId: string) =>
+  categoryRows
+    .filter((category) => category.place_id === placeId)
+    .map((category) => ({
+      key: category.key,
+      heading: category.heading,
+      description: category.description,
+      headingPhoto: category.heading_photo_url || category.heading_photo_thumb_url
+        ? {
+            id: `${category.id}-heading`,
+            name: category.heading_photo_name ?? category.heading,
+            url: category.heading_photo_url ?? category.heading_photo_thumb_url,
+            thumbUrl: category.heading_photo_thumb_url ?? undefined,
+          }
+        : undefined,
+      gallery: [],
+      strava: undefined,
+    }))
+    .sort(
+      (left, right) =>
+        previewCategoryPriority(left) - previewCategoryPriority(right),
+    );
+
 export default function App() {
   const [profile, setProfile] = useState<AppProfile | null>(null);
   const [events, setEvents] = useState<AdventureEvent[]>(isSupabaseConfigured ? [] : sampleEvents);
@@ -230,6 +255,36 @@ export default function App() {
     detailPlaceCacheRef.current.delete(placeId);
   };
 
+  const loadInitialPreviewCategories = async (places: AdventureEvent[]) => {
+    const previewPlaceIds = places.slice(0, 10).map((place) => place.id);
+    if (!previewPlaceIds.length) {
+      return places;
+    }
+
+    let categoryRows: PreviewCategoryRow[] = [];
+    try {
+      categoryRows = await fetchPlacePreviewCategories(previewPlaceIds);
+    } catch (previewError) {
+      setError(errorMessage(previewError, "Failed to load place previews."));
+      return places;
+    }
+
+    return places.map((place) => {
+      if (!previewPlaceIds.includes(place.id)) {
+        return place;
+      }
+
+      const nextCategories = mapPreviewCategories(categoryRows, place.id);
+      loadedPreviewCategoryPlaceIdsRef.current.add(place.id);
+      previewCategoryCacheRef.current.set(place.id, nextCategories);
+
+      return {
+        ...place,
+        categories: mergeCategoriesByKey(place.categories, nextCategories),
+      };
+    });
+  };
+
   const scrollToSection = (section: RefObject<HTMLDivElement>) => {
     window.setTimeout(() => {
       section.current?.scrollIntoView({ behavior: "smooth", block: "start" });
@@ -253,7 +308,7 @@ export default function App() {
           if (active) setFavouritePlaceIds(favouriteIds);
         }
 
-        const places = await fetchPlaces();
+        const places = await loadInitialPreviewCategories(await fetchPlaces());
         if (active) {
           setFetchedPlaces(places);
         }
@@ -263,7 +318,7 @@ export default function App() {
             await signOut().catch(() => undefined);
             setProfile(null);
             setFavouritePlaceIds([]);
-            const places = await fetchPlaces();
+            const places = await loadInitialPreviewCategories(await fetchPlaces());
             if (active) {
               setFetchedPlaces(places);
             }
@@ -286,7 +341,7 @@ export default function App() {
             if (!session?.user) {
               setProfile(null);
               setShowAnalytics(false);
-              const places = await fetchPlaces();
+              const places = await loadInitialPreviewCategories(await fetchPlaces());
               if (active) {
                 setFetchedPlaces(places);
               }
@@ -296,7 +351,7 @@ export default function App() {
             if (active) setProfile(nextProfile);
             const favouriteIds = await fetchFavouritePlaceIds(session.user.id);
             if (active) setFavouritePlaceIds(favouriteIds);
-            const places = await fetchPlaces();
+            const places = await loadInitialPreviewCategories(await fetchPlaces());
             if (active) {
               setFetchedPlaces(places);
             }
@@ -620,7 +675,7 @@ export default function App() {
 
   const refreshPlaces = async () => {
     if (!isSupabaseConfigured) return;
-    const places = await fetchPlaces();
+    const places = await loadInitialPreviewCategories(await fetchPlaces());
     setFetchedPlaces(places);
   };
 
