@@ -191,6 +191,12 @@ export default function App() {
   const [loadingPreviewPlaceIds, setLoadingPreviewPlaceIds] = useState<Set<string>>(
     () => new Set(),
   );
+  const [loadingCommentPlaceIds, setLoadingCommentPlaceIds] = useState<Set<string>>(
+    () => new Set(),
+  );
+  const [loadingExtraPlaceIds, setLoadingExtraPlaceIds] = useState<Set<string>>(
+    () => new Set(),
+  );
   const authSectionRef = useRef<HTMLDivElement | null>(null);
   const createSectionRef = useRef<HTMLDivElement | null>(null);
   const manageSectionRef = useRef<HTMLDivElement | null>(null);
@@ -209,6 +215,8 @@ export default function App() {
   const clearLoadingPlaceState = () => {
     setLoadingDetailPlaceIds(new Set());
     setLoadingPreviewPlaceIds(new Set());
+    setLoadingCommentPlaceIds(new Set());
+    setLoadingExtraPlaceIds(new Set());
   };
 
   const applyCachedPlaceData = (places: AdventureEvent[]) =>
@@ -257,8 +265,8 @@ export default function App() {
     detailPlaceCacheRef.current.delete(placeId);
   };
 
-  const loadInitialPreviewCategories = async (places: AdventureEvent[]) => {
-    const previewPlaceIds = places.slice(0, 10).map((place) => place.id);
+  const loadPreviewCategories = async (places: AdventureEvent[], placeIds: string[]) => {
+    const previewPlaceIds = Array.from(new Set(placeIds)).filter(Boolean);
     if (!previewPlaceIds.length) {
       return places;
     }
@@ -299,7 +307,10 @@ export default function App() {
   };
 
   const hydrateInitialPreviews = (places: AdventureEvent[], isActive = () => true) => {
-    void loadInitialPreviewCategories(places).then((placesWithPreviews) => {
+    void loadPreviewCategories(
+      places,
+      places.slice(0, 10).map((place) => place.id),
+    ).then((placesWithPreviews) => {
       if (isActive()) {
         setFetchedPlaces(placesWithPreviews);
       }
@@ -322,18 +333,25 @@ export default function App() {
     const boot = async () => {
       try {
         const session = await getSession();
-        if (session?.user) {
-          const nextProfile = await getProfile(session.user.id);
-          if (active) setProfile(nextProfile);
-          const favouriteIds = await fetchFavouritePlaceIds(session.user.id);
-          if (active) setFavouritePlaceIds(favouriteIds);
-        }
+        const profilePromise = session?.user
+          ? getProfile(session.user.id)
+          : Promise.resolve(null);
+        const [nextProfile, places] = await Promise.all([profilePromise, fetchPlaces()]);
 
-        const places = await fetchPlaces();
         if (active) {
+          if (nextProfile) setProfile(nextProfile);
           setFetchedPlaces(places);
           setIsLoading(false);
           hydrateInitialPreviews(places, () => active);
+        }
+        if (session?.user) {
+          void fetchFavouritePlaceIds(session.user.id)
+            .then((favouriteIds) => {
+              if (active) setFavouritePlaceIds(favouriteIds);
+            })
+            .catch((favouriteError) => {
+              if (active) setError(errorMessage(favouriteError, "Failed to load favourites."));
+            });
         }
       } catch (bootError) {
         if (active) {
@@ -373,15 +391,22 @@ export default function App() {
               }
               return;
             }
-            const nextProfile = await getProfile(session.user.id);
-            if (active) setProfile(nextProfile);
-            const favouriteIds = await fetchFavouritePlaceIds(session.user.id);
-            if (active) setFavouritePlaceIds(favouriteIds);
-            const places = await fetchPlaces();
+            const [nextProfile, places] = await Promise.all([
+              getProfile(session.user.id),
+              fetchPlaces(),
+            ]);
             if (active) {
+              setProfile(nextProfile);
               setFetchedPlaces(places);
               hydrateInitialPreviews(places, () => active);
             }
+            void fetchFavouritePlaceIds(session.user.id)
+              .then((favouriteIds) => {
+                if (active) setFavouritePlaceIds(favouriteIds);
+              })
+              .catch((favouriteError) => {
+                if (active) setError(errorMessage(favouriteError, "Failed to load favourites."));
+              });
           } catch (authError) {
             if (active) {
               if (isRefreshTokenError(authError)) {
@@ -526,75 +551,22 @@ export default function App() {
       return;
     }
 
-    unloadedPlaceIds.forEach((placeId) => {
-      loadedPreviewCategoryPlaceIdsRef.current.add(placeId);
-    });
-    setLoadingPreviewPlaceIds((current) => {
-      const next = new Set(current);
-      unloadedPlaceIds.forEach((placeId) => next.add(placeId));
-      return next;
-    });
-
     let active = true;
-    void fetchPlacePreviewCategories(unloadedPlaceIds)
-      .then((categoryRows) => {
+    void loadPreviewCategories(previewEvents, unloadedPlaceIds)
+      .then((placesWithPreviews) => {
         if (!active) return;
+        const previewMap = new Map(placesWithPreviews.map((event) => [event.id, event]));
         setEvents((current) =>
           current.map((event) => {
-            if (!unloadedPlaceIds.includes(event.id)) return event;
-            const nextCategories = categoryRows
-              .filter((category) => category.place_id === event.id)
-              .map((category) => ({
-                key: category.key,
-                heading: category.heading,
-                description: category.description,
-                headingPhoto: category.heading_photo_url || category.heading_photo_thumb_url
-                  ? {
-                      id: `${category.id}-heading`,
-                      name: category.heading_photo_name ?? category.heading,
-                      url: category.heading_photo_url ?? category.heading_photo_thumb_url,
-                      thumbUrl: category.heading_photo_thumb_url ?? undefined,
-                    }
-                  : undefined,
-                gallery: [],
-                strava: undefined,
-              }))
-              .sort(
-                (left, right) =>
-                  previewCategoryPriority(left) - previewCategoryPriority(right),
-              );
-            previewCategoryCacheRef.current.set(
-              event.id,
-              mergeCategoriesByKey(
-                previewCategoryCacheRef.current.get(event.id) ?? [],
-                nextCategories,
-              ),
-            );
-
-            return {
-              ...event,
-              categories: mergeCategoriesByKey(event.categories, nextCategories),
-            };
+            const previewEvent = previewMap.get(event.id);
+            return previewEvent
+              ? {
+                  ...event,
+                  categories: mergeCategoriesByKey(event.categories, previewEvent.categories),
+                }
+              : event;
           }),
         );
-        setLoadingPreviewPlaceIds((current) => {
-          const next = new Set(current);
-          unloadedPlaceIds.forEach((placeId) => next.delete(placeId));
-          return next;
-        });
-      })
-      .catch((previewError) => {
-        unloadedPlaceIds.forEach((placeId) => {
-          loadedPreviewCategoryPlaceIdsRef.current.delete(placeId);
-        });
-        setLoadingPreviewPlaceIds((current) => {
-          const next = new Set(current);
-          unloadedPlaceIds.forEach((placeId) => next.delete(placeId));
-          return next;
-        });
-        if (active) {
-          setError(errorMessage(previewError, "Failed to load place previews."));
-        }
       });
 
     return () => {
@@ -683,6 +655,7 @@ export default function App() {
           next.delete(selectedPlaceId);
           return next;
         });
+        setLoadingCommentPlaceIds((current) => new Set(current).add(selectedPlaceId));
         void fetchPlaceComments(selectedPlaceId)
           .then((comments) => {
             if (!active) return;
@@ -705,7 +678,15 @@ export default function App() {
             if (active) {
               setError(errorMessage(commentsError, "Failed to load comments."));
             }
+          })
+          .finally(() => {
+            setLoadingCommentPlaceIds((current) => {
+              const next = new Set(current);
+              next.delete(selectedPlaceId);
+              return next;
+            });
           });
+        setLoadingExtraPlaceIds((current) => new Set(current).add(selectedPlaceId));
         void fetchPlaceCategoryExtras(selectedPlaceId)
           .then((categories) => {
             if (!active) return;
@@ -730,11 +711,28 @@ export default function App() {
             if (active) {
               setError(errorMessage(extrasError, "Failed to load galleries."));
             }
+          })
+          .finally(() => {
+            setLoadingExtraPlaceIds((current) => {
+              const next = new Set(current);
+              next.delete(selectedPlaceId);
+              return next;
+            });
           });
       })
       .catch((detailsError) => {
         loadedDetailPlaceIdsRef.current.delete(selectedPlaceId);
         setLoadingDetailPlaceIds((current) => {
+          const next = new Set(current);
+          next.delete(selectedPlaceId);
+          return next;
+        });
+        setLoadingCommentPlaceIds((current) => {
+          const next = new Set(current);
+          next.delete(selectedPlaceId);
+          return next;
+        });
+        setLoadingExtraPlaceIds((current) => {
           const next = new Set(current);
           next.delete(selectedPlaceId);
           return next;
@@ -1201,6 +1199,8 @@ export default function App() {
               isFavourited={favouritePlaceIds.includes(selectedEvent.id)}
               canFavourite={Boolean(profile)}
               isLoadingDetails={loadingDetailPlaceIds.has(selectedEvent.id)}
+              isLoadingExtras={loadingExtraPlaceIds.has(selectedEvent.id)}
+              isLoadingComments={loadingCommentPlaceIds.has(selectedEvent.id)}
             />
           ) : null}
 

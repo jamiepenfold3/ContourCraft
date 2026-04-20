@@ -18,6 +18,8 @@ type EventDetailProps = {
   isFavourited: boolean;
   canFavourite: boolean;
   isLoadingDetails: boolean;
+  isLoadingExtras: boolean;
+  isLoadingComments: boolean;
 };
 
 const sectionLabels: Partial<Record<CategoryKey, string>> = {
@@ -65,6 +67,8 @@ export function EventDetail({
   isFavourited,
   canFavourite,
   isLoadingDetails,
+  isLoadingExtras,
+  isLoadingComments,
 }: EventDetailProps) {
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
@@ -224,6 +228,12 @@ export function EventDetail({
           </article>
         ))}
       </div>
+      {isLoadingExtras ? (
+        <div className="loading-inline detail-inline-loader" role="status" aria-live="polite">
+          <span className="loading-spinner" aria-hidden="true" />
+          <span>Loading galleries and activities</span>
+        </div>
+      ) : null}
 
       <article className="journal-card">
         <div className="section-title">
@@ -298,6 +308,12 @@ export function EventDetail({
         </form>
 
         <div className="comment-list">
+          {isLoadingComments ? (
+            <div className="loading-inline detail-inline-loader" role="status" aria-live="polite">
+              <span className="loading-spinner" aria-hidden="true" />
+              <span>Loading comments</span>
+            </div>
+          ) : null}
           {event.comments.length ? (
             event.comments
               .slice()
@@ -316,9 +332,9 @@ export function EventDetail({
                   <p>{comment.message}</p>
                 </div>
               ))
-          ) : (
+          ) : !isLoadingComments ? (
             <p>No comments yet.</p>
-          )}
+          ) : null}
         </div>
       </article>
     </section>
