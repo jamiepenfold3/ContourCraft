@@ -285,6 +285,14 @@ export default function App() {
     });
   };
 
+  const hydrateInitialPreviews = (places: AdventureEvent[], isActive = () => true) => {
+    void loadInitialPreviewCategories(places).then((placesWithPreviews) => {
+      if (isActive()) {
+        setFetchedPlaces(placesWithPreviews);
+      }
+    });
+  };
+
   const scrollToSection = (section: RefObject<HTMLDivElement>) => {
     window.setTimeout(() => {
       section.current?.scrollIntoView({ behavior: "smooth", block: "start" });
@@ -308,9 +316,11 @@ export default function App() {
           if (active) setFavouritePlaceIds(favouriteIds);
         }
 
-        const places = await loadInitialPreviewCategories(await fetchPlaces());
+        const places = await fetchPlaces();
         if (active) {
           setFetchedPlaces(places);
+          setIsLoading(false);
+          hydrateInitialPreviews(places, () => active);
         }
       } catch (bootError) {
         if (active) {
@@ -318,9 +328,11 @@ export default function App() {
             await signOut().catch(() => undefined);
             setProfile(null);
             setFavouritePlaceIds([]);
-            const places = await loadInitialPreviewCategories(await fetchPlaces());
+            const places = await fetchPlaces();
             if (active) {
               setFetchedPlaces(places);
+              setIsLoading(false);
+              hydrateInitialPreviews(places, () => active);
             }
             setError("Your login session expired. Please log in again.");
           } else {
@@ -341,9 +353,10 @@ export default function App() {
             if (!session?.user) {
               setProfile(null);
               setShowAnalytics(false);
-              const places = await loadInitialPreviewCategories(await fetchPlaces());
+              const places = await fetchPlaces();
               if (active) {
                 setFetchedPlaces(places);
+                hydrateInitialPreviews(places, () => active);
               }
               return;
             }
@@ -351,9 +364,10 @@ export default function App() {
             if (active) setProfile(nextProfile);
             const favouriteIds = await fetchFavouritePlaceIds(session.user.id);
             if (active) setFavouritePlaceIds(favouriteIds);
-            const places = await loadInitialPreviewCategories(await fetchPlaces());
+            const places = await fetchPlaces();
             if (active) {
               setFetchedPlaces(places);
+              hydrateInitialPreviews(places, () => active);
             }
           } catch (authError) {
             if (active) {
@@ -675,8 +689,9 @@ export default function App() {
 
   const refreshPlaces = async () => {
     if (!isSupabaseConfigured) return;
-    const places = await loadInitialPreviewCategories(await fetchPlaces());
+    const places = await fetchPlaces();
     setFetchedPlaces(places);
+    hydrateInitialPreviews(places);
   };
 
   const handleLogin = async (email: string, password: string) => {
