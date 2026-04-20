@@ -359,11 +359,7 @@ export async function fetchPlaces() {
           id,
           place_id,
           key,
-          heading,
-          description,
-          heading_photo_name,
-          heading_photo_url,
-          heading_photo_thumb_url
+          heading
         )
       `,
     )
@@ -401,8 +397,7 @@ export async function fetchPlacePreviewCategories(placeIds: string[]) {
           heading_photo_thumb_url
       `,
     )
-    .in("place_id", placeIds)
-    .in("key", ["campsite", "accommodation"]);
+    .in("place_id", placeIds);
 
   if (categoryError) throw categoryError;
   return (categoryRows ?? []).map((category) => ({

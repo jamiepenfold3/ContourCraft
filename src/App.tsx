@@ -94,6 +94,12 @@ const categoryMatchesFilter = (category: LocationCategory, filter: MapFilterKey)
   return category.key === filter;
 };
 
+const previewCategoryPriority = (category: LocationCategory) => {
+  if (category.key === "campsite") return 0;
+  if (category.key === "accommodation") return 1;
+  return 2;
+};
+
 const errorMessage = (error: unknown, fallback: string) => {
   if (error instanceof Error) {
     return error.message;
@@ -470,7 +476,11 @@ export default function App() {
                   : undefined,
                 gallery: [],
                 strava: undefined,
-              }));
+              }))
+              .sort(
+                (left, right) =>
+                  previewCategoryPriority(left) - previewCategoryPriority(right),
+              );
             previewCategoryCacheRef.current.set(
               event.id,
               mergeCategoriesByKey(
