@@ -453,7 +453,7 @@ export default function App() {
                   ? {
                       id: `${category.id}-heading`,
                       name: category.heading_photo_name ?? category.heading,
-                      url: category.heading_photo_thumb_url ?? category.heading_photo_url,
+                      url: category.heading_photo_url,
                       thumbUrl: category.heading_photo_thumb_url ?? undefined,
                     }
                   : undefined,
