@@ -354,13 +354,7 @@ export async function fetchPlaces() {
         tags,
         created_at,
         created_by,
-        recommend_count,
-        place_categories (
-          id,
-          place_id,
-          key,
-          heading
-        )
+        recommend_count
       `,
     )
     .order("created_at", { ascending: false })
@@ -371,10 +365,28 @@ export async function fetchPlaces() {
   return (placeRows ?? []).map((place) =>
     mapPlace({
       ...place,
-      place_categories: place.place_categories ?? [],
+      place_categories: [],
       place_comments: [],
     }),
   );
+}
+
+export async function fetchPlaceCategorySummaries(placeIds: string[]) {
+  if (!placeIds.length) {
+    return [];
+  }
+
+  const client = ensureClient();
+  const { data: categoryRows, error } = await client
+    .from("place_categories")
+    .select("id, place_id, key, heading")
+    .in("place_id", placeIds);
+
+  if (error) throw error;
+  return (categoryRows ?? []).map((category) => ({
+    ...category,
+    key: normalizeCategoryKey(category.key),
+  }));
 }
 
 export async function fetchPlacePreviewCategories(placeIds: string[]) {

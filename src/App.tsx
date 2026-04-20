@@ -16,6 +16,7 @@ import {
   fetchAnalytics,
   fetchFavouritePlaceIds,
   fetchPlaceCategoryExtras,
+  fetchPlaceCategorySummaries,
   fetchPlaceComments,
   fetchPlaceDetails,
   fetchPlacePreviewCategories,
@@ -133,6 +134,8 @@ const handlePreviewImageError = (
 };
 
 type PreviewCategoryRow = Awaited<ReturnType<typeof fetchPlacePreviewCategories>>[number];
+type CategorySummaryRow = Awaited<ReturnType<typeof fetchPlaceCategorySummaries>>[number];
+const CATEGORY_SUMMARY_BATCH_SIZE = 40;
 
 const mapPreviewCategories = (categoryRows: PreviewCategoryRow[], placeId: string) =>
   categoryRows
@@ -156,6 +159,17 @@ const mapPreviewCategories = (categoryRows: PreviewCategoryRow[], placeId: strin
       (left, right) =>
         previewCategoryPriority(left) - previewCategoryPriority(right),
     );
+
+const mapCategorySummaries = (categoryRows: CategorySummaryRow[], placeId: string) =>
+  categoryRows
+    .filter((category) => category.place_id === placeId)
+    .map((category) => ({
+      key: category.key,
+      heading: category.heading,
+      description: "",
+      gallery: [],
+      strava: undefined,
+    }));
 
 export default function App() {
   const [profile, setProfile] = useState<AppProfile | null>(null);
@@ -197,6 +211,7 @@ export default function App() {
   const [loadingExtraPlaceIds, setLoadingExtraPlaceIds] = useState<Set<string>>(
     () => new Set(),
   );
+  const [isLoadingCategorySummaries, setIsLoadingCategorySummaries] = useState(false);
   const authSectionRef = useRef<HTMLDivElement | null>(null);
   const createSectionRef = useRef<HTMLDivElement | null>(null);
   const manageSectionRef = useRef<HTMLDivElement | null>(null);
@@ -217,6 +232,7 @@ export default function App() {
     setLoadingPreviewPlaceIds(new Set());
     setLoadingCommentPlaceIds(new Set());
     setLoadingExtraPlaceIds(new Set());
+    setIsLoadingCategorySummaries(false);
   };
 
   const applyCachedPlaceData = (places: AdventureEvent[]) =>
@@ -317,6 +333,41 @@ export default function App() {
     });
   };
 
+  const hydrateCategorySummaries = (places: AdventureEvent[], isActive = () => true) => {
+    const placeIds = places.map((place) => place.id);
+    if (!placeIds.length) return;
+
+    setIsLoadingCategorySummaries(true);
+    void (async () => {
+      for (let index = 0; index < placeIds.length; index += CATEGORY_SUMMARY_BATCH_SIZE) {
+        if (!isActive()) return;
+        const batchIds = placeIds.slice(index, index + CATEGORY_SUMMARY_BATCH_SIZE);
+        const categoryRows = await fetchPlaceCategorySummaries(batchIds);
+        if (!isActive()) return;
+        setEvents((current) =>
+          current.map((event) => {
+            if (!batchIds.includes(event.id)) return event;
+            const nextCategories = mapCategorySummaries(categoryRows, event.id);
+            return {
+              ...event,
+              categories: mergeCategoriesByKey(event.categories, nextCategories),
+            };
+          }),
+        );
+      }
+    })()
+      .catch((summaryError) => {
+        if (isActive()) {
+          setError(errorMessage(summaryError, "Failed to load category filters."));
+        }
+      })
+      .finally(() => {
+        if (isActive()) {
+          setIsLoadingCategorySummaries(false);
+        }
+      });
+  };
+
   const scrollToSection = (section: RefObject<HTMLDivElement>) => {
     window.setTimeout(() => {
       section.current?.scrollIntoView({ behavior: "smooth", block: "start" });
@@ -342,6 +393,7 @@ export default function App() {
           if (nextProfile) setProfile(nextProfile);
           setFetchedPlaces(places);
           setIsLoading(false);
+          hydrateCategorySummaries(places, () => active);
           hydrateInitialPreviews(places, () => active);
         }
         if (session?.user) {
@@ -363,6 +415,7 @@ export default function App() {
             if (active) {
               setFetchedPlaces(places);
               setIsLoading(false);
+              hydrateCategorySummaries(places, () => active);
               hydrateInitialPreviews(places, () => active);
             }
             setError("Your login session expired. Please log in again.");
@@ -387,6 +440,7 @@ export default function App() {
               const places = await fetchPlaces();
               if (active) {
                 setFetchedPlaces(places);
+                hydrateCategorySummaries(places, () => active);
                 hydrateInitialPreviews(places, () => active);
               }
               return;
@@ -398,6 +452,7 @@ export default function App() {
             if (active) {
               setProfile(nextProfile);
               setFetchedPlaces(places);
+              hydrateCategorySummaries(places, () => active);
               hydrateInitialPreviews(places, () => active);
             }
             void fetchFavouritePlaceIds(session.user.id)
@@ -751,6 +806,7 @@ export default function App() {
     if (!isSupabaseConfigured) return;
     const places = await fetchPlaces();
     setFetchedPlaces(places);
+    hydrateCategorySummaries(places);
     hydrateInitialPreviews(places);
   };
 
@@ -1060,6 +1116,12 @@ export default function App() {
             <section className="panel search-panel">
               <div>
                 <p className="eyebrow">Map filters</p>
+                {isLoadingCategorySummaries ? (
+                  <div className="loading-inline filter-loading" role="status" aria-live="polite">
+                    <span className="loading-spinner" aria-hidden="true" />
+                    <span>Loading category filters</span>
+                  </div>
+                ) : null}
                 <div className="category-toggle-grid">
                   {[
                     ["campsite", "Camping"],
