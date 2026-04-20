@@ -18,6 +18,9 @@ export const initialAnalytics: AnalyticsSnapshot = {
     beer_tasting: 0,
     swim: 0,
   },
+  placeViews: {},
+  dailySectionViews: {},
+  dailyPlaceViews: {},
   activeDates: [],
 };
 

@@ -94,6 +94,9 @@ export type AnalyticsSnapshot = {
   eventsCreated: number;
   photoUploads: number;
   sectionViews: Record<string, number>;
+  placeViews: Record<string, number>;
+  dailySectionViews: Record<string, Record<string, number>>;
+  dailyPlaceViews: Record<string, Record<string, number>>;
   activeDates: string[];
 };
 

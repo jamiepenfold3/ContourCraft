@@ -8,6 +8,13 @@ const STORAGE_VERSION = "5";
 const cloneAnalytics = (analytics: AnalyticsSnapshot): AnalyticsSnapshot => ({
   ...analytics,
   sectionViews: { ...analytics.sectionViews },
+  placeViews: { ...(analytics.placeViews ?? {}) },
+  dailySectionViews: Object.fromEntries(
+    Object.entries(analytics.dailySectionViews ?? {}).map(([key, views]) => [key, { ...views }]),
+  ),
+  dailyPlaceViews: Object.fromEntries(
+    Object.entries(analytics.dailyPlaceViews ?? {}).map(([key, views]) => [key, { ...views }]),
+  ),
   activeDates: [...analytics.activeDates],
 });
 

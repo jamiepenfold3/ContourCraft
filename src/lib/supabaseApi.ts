@@ -668,19 +668,21 @@ export async function fetchAnalytics() {
   const client = ensureClient();
   const { data, error } = await client
     .from("analytics_events")
-    .select("event_type, visitor_role, section, photo_count, created_at");
+    .select("event_type, visitor_role, place_id, section, photo_count, created_at");
 
   if (error) throw error;
 
   const rows = (data ?? []) as Array<{
     event_type: string;
     visitor_role: string;
+    place_id: string | null;
     section: string | null;
     photo_count: number | null;
     created_at: string;
   }>;
 
   return rows.reduce<AnalyticsSnapshot>((snapshot, row) => {
+    const day = row.created_at.slice(0, 10);
     snapshot.totalVisits += row.event_type === "page_view" ? 1 : 0;
     snapshot.guestVisits +=
       row.event_type === "page_view" && row.visitor_role === "guest" ? 1 : 0;
@@ -688,11 +690,24 @@ export async function fetchAnalytics() {
     snapshot.eventViews += row.event_type === "place_view" ? 1 : 0;
     snapshot.eventsCreated += row.event_type === "place_created" ? 1 : 0;
     snapshot.photoUploads += row.photo_count ?? 0;
-    if (row.section) {
+
+    if (row.event_type === "place_view" && row.place_id) {
+      snapshot.placeViews[row.place_id] = (snapshot.placeViews[row.place_id] ?? 0) + 1;
+      snapshot.dailyPlaceViews[row.place_id] = {
+        ...(snapshot.dailyPlaceViews[row.place_id] ?? {}),
+        [day]: (snapshot.dailyPlaceViews[row.place_id]?.[day] ?? 0) + 1,
+      };
+    }
+
+    if (row.event_type === "section_view" && row.section) {
       snapshot.sectionViews[row.section] =
         (snapshot.sectionViews[row.section] ?? 0) + 1;
+      snapshot.dailySectionViews[row.section] = {
+        ...(snapshot.dailySectionViews[row.section] ?? {}),
+        [day]: (snapshot.dailySectionViews[row.section]?.[day] ?? 0) + 1,
+      };
     }
-    const day = row.created_at.slice(0, 10);
+
     if (!snapshot.activeDates.includes(day)) {
       snapshot.activeDates.push(day);
     }
@@ -700,6 +715,9 @@ export async function fetchAnalytics() {
   }, {
     ...initialAnalytics,
     sectionViews: { ...initialAnalytics.sectionViews },
+    placeViews: {},
+    dailySectionViews: {},
+    dailyPlaceViews: {},
     activeDates: [],
   });
 }

@@ -18,6 +18,9 @@ export const recordVisit = (
     totalVisits: analytics.totalVisits + 1,
     guestVisits: analytics.guestVisits + (guestVisit ? 1 : 0),
     sectionViews: { ...analytics.sectionViews },
+    placeViews: { ...analytics.placeViews },
+    dailySectionViews: { ...analytics.dailySectionViews },
+    dailyPlaceViews: { ...analytics.dailyPlaceViews },
     activeDates: [...analytics.activeDates],
   };
   markAnalyticsActive(next);
@@ -29,6 +32,9 @@ export const recordLogin = (analytics: AnalyticsSnapshot): AnalyticsSnapshot => 
     ...analytics,
     logins: analytics.logins + 1,
     sectionViews: { ...analytics.sectionViews },
+    placeViews: { ...analytics.placeViews },
+    dailySectionViews: { ...analytics.dailySectionViews },
+    dailyPlaceViews: { ...analytics.dailyPlaceViews },
     activeDates: [...analytics.activeDates],
   };
   markAnalyticsActive(next);
@@ -43,6 +49,9 @@ export const recordEventView = (
     ...analytics,
     eventViews: analytics.eventViews + 1,
     sectionViews: { ...analytics.sectionViews },
+    placeViews: { ...analytics.placeViews },
+    dailySectionViews: { ...analytics.dailySectionViews },
+    dailyPlaceViews: { ...analytics.dailyPlaceViews },
     activeDates: [...analytics.activeDates],
   };
   if (section) {
@@ -61,6 +70,9 @@ export const recordEventCreated = (
     eventsCreated: analytics.eventsCreated + 1,
     photoUploads: analytics.photoUploads + photoCount,
     sectionViews: { ...analytics.sectionViews },
+    placeViews: { ...analytics.placeViews },
+    dailySectionViews: { ...analytics.dailySectionViews },
+    dailyPlaceViews: { ...analytics.dailyPlaceViews },
     activeDates: [...analytics.activeDates],
   };
   markAnalyticsActive(next);

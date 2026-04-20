@@ -1,5 +1,5 @@
 import { FormEvent, useState } from "react";
-import { ArrowLeft, Heart, Mail, Share2, ThumbsUp } from "lucide-react";
+import { ArrowLeft, Heart, Mail, ThumbsUp } from "lucide-react";
 import { StravaEmbed } from "./StravaEmbed";
 import { AdventureEvent, AppProfile, CategoryKey } from "../types";
 
@@ -31,6 +31,27 @@ const sectionLabels: Partial<Record<CategoryKey, string>> = {
   beer_tasting: "Beer tasting",
   swim: "Swim spots",
 };
+
+const WhatsAppIcon = ({ size = 16 }: { size?: number }) => (
+  <svg
+    aria-hidden="true"
+    width={size}
+    height={size}
+    viewBox="0 0 24 24"
+    fill="none"
+  >
+    <path
+      d="M19.1 4.9A9.9 9.9 0 0 0 3.5 16.8L2.2 21.7l5-1.3A9.9 9.9 0 0 0 21.9 12a9.8 9.8 0 0 0-2.8-7.1Z"
+      stroke="currentColor"
+      strokeWidth="1.8"
+      strokeLinejoin="round"
+    />
+    <path
+      d="M8.6 7.9c-.2-.5-.4-.5-.7-.5h-.6c-.2 0-.5.1-.8.4-.3.3-1 1-1 2.4s1 2.7 1.2 2.9c.1.2 2 3.2 5 4.3 2.5 1 3 .8 3.6.8.5 0 1.7-.7 2-1.4.2-.7.2-1.3.1-1.4-.1-.1-.3-.2-.7-.4l-2-.9c-.3-.1-.5-.2-.7.2-.2.3-.8 1-1 1.2-.2.2-.4.2-.7.1-.4-.2-1.5-.6-2.8-1.8-1-1-1.7-2.1-1.9-2.5-.2-.3 0-.5.1-.7l.5-.6c.2-.2.2-.4.3-.6.1-.2 0-.5 0-.6l-.9-1.9Z"
+      fill="currentColor"
+    />
+  </svg>
+);
 
 export function EventDetail({
   event,
@@ -93,7 +114,7 @@ export function EventDetail({
       <div className="detail-topbar">
         <div className="detail-actions">
           <button type="button" className="ghost-button share-button" onClick={onShare}>
-            <Share2 size={16} />
+            <WhatsAppIcon />
             <span>Share</span>
           </button>
           {canFavourite ? (

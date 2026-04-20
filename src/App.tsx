@@ -876,10 +876,6 @@ export default function App() {
             onLogout={handleLogout}
           />
         </div>
-        <p className="hero-copy">
-          Creator accounts can publish places and view analytics. Viewer accounts can unlock
-          wild camping once access is enabled on their profile.
-        </p>
         {!isSupabaseConfigured ? (
           <div className="config-notice">
             Add `VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY` to run against Supabase.
@@ -995,7 +991,7 @@ export default function App() {
                     {previewPhoto ? (
                       <img
                         className="event-preview-image"
-                        src={previewPhoto.thumbUrl ?? previewPhoto.url}
+                        src={previewPhoto.url}
                         alt={previewPhoto.name}
                         loading="eager"
                         decoding="async"
@@ -1057,7 +1053,7 @@ export default function App() {
               <button type="button" className="ghost-button back-section-button" onClick={() => setShowAnalytics(false)}>
                 ← Back to map
               </button>
-              <AnalyticsPanel analytics={analytics} />
+              <AnalyticsPanel analytics={analytics} events={events} />
             </div>
           ) : null}
 
@@ -1135,7 +1131,7 @@ export default function App() {
                         {previewPhoto ? (
                           <img
                             className="event-preview-image"
-                            src={previewPhoto.thumbUrl ?? previewPhoto.url}
+                            src={previewPhoto.url}
                             alt={previewPhoto.name}
                             loading="eager"
                             decoding="async"
@@ -1171,20 +1167,6 @@ export default function App() {
             </div>
           ) : null}
 
-          {!selectedEvent && !showCreateForm && !showAnalytics && !showManageEntries && !showFavourites ? (
-            <section className="panel">
-              <div className="panel-heading">
-                <div>
-                  <p className="eyebrow">Access model</p>
-                  <h2>Public browsing, creator publishing, gated wild camping.</h2>
-                </div>
-              </div>
-              <p className="guest-copy">
-                Standard places are visible to everyone. Wild camping places are hidden unless
-                the signed-in profile has the paid-access flag or creator role in Supabase.
-              </p>
-            </section>
-          ) : null}
         </section>
       </main>
     </div>
