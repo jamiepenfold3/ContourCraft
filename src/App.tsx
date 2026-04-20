@@ -1,4 +1,5 @@
 import { RefObject, useEffect, useMemo, useRef, useState } from "react";
+import type { SyntheticEvent } from "react";
 import { AnalyticsPanel } from "./components/AnalyticsPanel";
 import { AuthSheet } from "./components/AuthSheet";
 import { EventDetail } from "./components/EventDetail";
@@ -111,6 +112,16 @@ const isRefreshTokenError = (error: unknown) => {
     message.includes("refresh token not found") ||
     message.includes("auth session missing")
   );
+};
+
+const handlePreviewImageError = (
+  imageEvent: SyntheticEvent<HTMLImageElement>,
+  fallbackUrl?: string,
+) => {
+  if (!fallbackUrl || imageEvent.currentTarget.src === fallbackUrl) {
+    return;
+  }
+  imageEvent.currentTarget.src = fallbackUrl;
 };
 
 export default function App() {
@@ -449,11 +460,11 @@ export default function App() {
                 key: category.key,
                 heading: category.heading,
                 description: category.description,
-                headingPhoto: category.heading_photo_url
+                headingPhoto: category.heading_photo_url || category.heading_photo_thumb_url
                   ? {
                       id: `${category.id}-heading`,
                       name: category.heading_photo_name ?? category.heading,
-                      url: category.heading_photo_url,
+                      url: category.heading_photo_url ?? category.heading_photo_thumb_url,
                       thumbUrl: category.heading_photo_thumb_url ?? undefined,
                     }
                   : undefined,
@@ -995,6 +1006,9 @@ export default function App() {
                         alt={previewPhoto.name}
                         loading="eager"
                         decoding="async"
+                        onError={(imageEvent) =>
+                          handlePreviewImageError(imageEvent, previewPhoto.thumbUrl)
+                        }
                       />
                     ) : isPreviewLoading ? (
                       <span className="event-preview-loading" aria-label="Loading preview photo">
@@ -1135,6 +1149,9 @@ export default function App() {
                             alt={previewPhoto.name}
                             loading="eager"
                             decoding="async"
+                            onError={(imageEvent) =>
+                              handlePreviewImageError(imageEvent, previewPhoto.thumbUrl)
+                            }
                           />
                         ) : null}
                         <span>{event.title}</span>
