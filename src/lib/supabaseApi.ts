@@ -18,6 +18,7 @@ type PlaceInsert = Omit<AdventureEvent, "id" | "createdAt" | "createdBy" | "crea
 
 const INITIAL_PLACE_LIMIT = 250;
 const PHOTO_BUCKET = "place-photos";
+const useOptimizedRpc = import.meta.env.VITE_USE_OPTIMIZED_RPC === "true";
 const ensureClient = () => {
   if (!supabase) {
     throw new Error("Supabase is not configured.");
@@ -364,20 +365,22 @@ export async function signOut() {
 
 export async function fetchPlaces() {
   const client = ensureClient();
-  const { data: rpcRows, error: rpcError } = await client.rpc("get_visible_places_map", {
-    limit_count: INITIAL_PLACE_LIMIT,
-  });
+  if (useOptimizedRpc) {
+    const { data: rpcRows, error: rpcError } = await client.rpc("get_visible_places_map", {
+      limit_count: INITIAL_PLACE_LIMIT,
+    });
 
-  if (!rpcError) {
-    return (rpcRows ?? []).map((place: any) =>
-      mapPlace({
-        ...place,
-        place_categories: [],
-        place_comments: [],
-      }),
-    );
+    if (!rpcError) {
+      return (rpcRows ?? []).map((place: any) =>
+        mapPlace({
+          ...place,
+          place_categories: [],
+          place_comments: [],
+        }),
+      );
+    }
+    if (!isMissingRpcError(rpcError)) throw rpcError;
   }
-  if (!isMissingRpcError(rpcError)) throw rpcError;
 
   const { data: placeRows, error } = await client
     .from("places")
@@ -415,20 +418,22 @@ export async function fetchPlaceCategorySummaries(placeIds: string[]) {
   }
 
   const client = ensureClient();
-  const { data: rpcRows, error: rpcError } = await client.rpc(
-    "get_place_category_summaries",
-    {
-      target_place_ids: placeIds,
-    },
-  );
+  if (useOptimizedRpc) {
+    const { data: rpcRows, error: rpcError } = await client.rpc(
+      "get_place_category_summaries",
+      {
+        target_place_ids: placeIds,
+      },
+    );
 
-  if (!rpcError) {
-    return (rpcRows ?? []).map((category: any) => ({
-      ...category,
-      key: normalizeCategoryKey(category.key),
-    }));
+    if (!rpcError) {
+      return (rpcRows ?? []).map((category: any) => ({
+        ...category,
+        key: normalizeCategoryKey(category.key),
+      }));
+    }
+    if (!isMissingRpcError(rpcError)) throw rpcError;
   }
-  if (!isMissingRpcError(rpcError)) throw rpcError;
 
   const { data: categoryRows, error } = await client
     .from("place_categories")
@@ -448,17 +453,19 @@ export async function fetchPlacePreviewCategories(placeIds: string[]) {
   }
 
   const client = ensureClient();
-  const { data: rpcRows, error: rpcError } = await client.rpc("get_place_previews", {
-    target_place_ids: placeIds,
-  });
+  if (useOptimizedRpc) {
+    const { data: rpcRows, error: rpcError } = await client.rpc("get_place_previews", {
+      target_place_ids: placeIds,
+    });
 
-  if (!rpcError) {
-    return (rpcRows ?? []).map((category: any) => ({
-      ...category,
-      key: normalizeCategoryKey(category.key),
-    }));
+    if (!rpcError) {
+      return (rpcRows ?? []).map((category: any) => ({
+        ...category,
+        key: normalizeCategoryKey(category.key),
+      }));
+    }
+    if (!isMissingRpcError(rpcError)) throw rpcError;
   }
-  if (!isMissingRpcError(rpcError)) throw rpcError;
 
   const { data: categoryRows, error: categoryError } = await client
     .from("place_categories")
@@ -486,14 +493,16 @@ export async function fetchPlacePreviewCategories(placeIds: string[]) {
 
 export async function fetchPlaceDetails(placeId: string) {
   const client = ensureClient();
-  const { data: rpcPlace, error: rpcError } = await client.rpc("get_place_detail", {
-    target_place_id: placeId,
-  });
+  if (useOptimizedRpc) {
+    const { data: rpcPlace, error: rpcError } = await client.rpc("get_place_detail", {
+      target_place_id: placeId,
+    });
 
-  if (!rpcError && rpcPlace) {
-    return mapPlace(rpcPlace);
+    if (!rpcError && rpcPlace) {
+      return mapPlace(rpcPlace);
+    }
+    if (rpcError && !isMissingRpcError(rpcError)) throw rpcError;
   }
-  if (rpcError && !isMissingRpcError(rpcError)) throw rpcError;
 
   const [
     { data: placeRow, error: placeError },
@@ -549,17 +558,19 @@ export async function fetchPlaceDetails(placeId: string) {
 
 export async function fetchPlaceCategoryExtras(placeId: string) {
   const client = ensureClient();
-  const { data: rpcRows, error: rpcError } = await client.rpc(
-    "get_place_category_extras",
-    {
-      target_place_id: placeId,
-    },
-  );
+  if (useOptimizedRpc) {
+    const { data: rpcRows, error: rpcError } = await client.rpc(
+      "get_place_category_extras",
+      {
+        target_place_id: placeId,
+      },
+    );
 
-  if (!rpcError) {
-    return normalizePlaceCategories(rpcRows ?? []);
+    if (!rpcError) {
+      return normalizePlaceCategories(rpcRows ?? []);
+    }
+    if (!isMissingRpcError(rpcError)) throw rpcError;
   }
-  if (!isMissingRpcError(rpcError)) throw rpcError;
 
   const { data: categoryRows, error } = await client
     .from("place_categories")
@@ -584,14 +595,16 @@ export async function fetchPlaceCategoryExtras(placeId: string) {
 
 export async function fetchPlaceComments(placeId: string) {
   const client = ensureClient();
-  const { data: rpcRows, error: rpcError } = await client.rpc("get_place_comments", {
-    target_place_id: placeId,
-  });
+  if (useOptimizedRpc) {
+    const { data: rpcRows, error: rpcError } = await client.rpc("get_place_comments", {
+      target_place_id: placeId,
+    });
 
-  if (!rpcError) {
-    return (rpcRows ?? []).map(mapComment);
+    if (!rpcError) {
+      return (rpcRows ?? []).map(mapComment);
+    }
+    if (!isMissingRpcError(rpcError)) throw rpcError;
   }
-  if (!isMissingRpcError(rpcError)) throw rpcError;
 
   const { data: commentRows, error } = await client
     .from("place_comments")
@@ -799,12 +812,14 @@ export async function trackEvent(input: {
 
 export async function fetchAnalytics() {
   const client = ensureClient();
-  const { data: rpcAnalytics, error: rpcError } = await client.rpc("get_creator_analytics");
+  const { data: rpcAnalytics, error: rpcError } = useOptimizedRpc
+    ? await client.rpc("get_creator_analytics")
+    : { data: null, error: { code: "RPC_DISABLED" } };
 
   if (!rpcError) {
     return mapAnalyticsSnapshot(rpcAnalytics as Partial<AnalyticsSnapshot>);
   }
-  if (!isMissingRpcError(rpcError)) throw rpcError;
+  if (useOptimizedRpc && !isMissingRpcError(rpcError)) throw rpcError;
 
   const { data, error } = await client
     .from("analytics_events")

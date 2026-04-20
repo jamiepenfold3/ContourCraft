@@ -338,6 +338,14 @@ stable
 security definer
 set search_path = public
 as $$
+  with access as (
+    select exists (
+      select 1
+      from public.profiles
+      where profiles.id = auth.uid()
+        and (profiles.role = 'creator' or profiles.wild_camping_access = true)
+    ) as can_view_wild
+  )
   select
     places.id,
     places.title,
@@ -350,7 +358,9 @@ as $$
     places.created_by,
     places.recommend_count
   from public.places
-  where public.can_view_place_type(places.place_type)
+  cross join access
+  where places.place_type <> 'wild-camping'
+    or access.can_view_wild
   order by places.created_at desc
   limit greatest(1, least(coalesce(limit_count, 250), 500));
 $$;
@@ -367,6 +377,14 @@ stable
 security definer
 set search_path = public
 as $$
+  with access as (
+    select exists (
+      select 1
+      from public.profiles
+      where profiles.id = auth.uid()
+        and (profiles.role = 'creator' or profiles.wild_camping_access = true)
+    ) as can_view_wild
+  )
   select
     place_categories.id,
     place_categories.place_id,
@@ -374,8 +392,9 @@ as $$
     place_categories.heading
   from public.place_categories
   join public.places on places.id = place_categories.place_id
+  cross join access
   where place_categories.place_id = any(coalesce(target_place_ids, '{}'::uuid[]))
-    and public.can_view_place_type(places.place_type)
+    and (places.place_type <> 'wild-camping' or access.can_view_wild)
   order by
     array_position(coalesce(target_place_ids, '{}'::uuid[]), place_categories.place_id),
     case place_categories.key
@@ -402,6 +421,14 @@ stable
 security definer
 set search_path = public
 as $$
+  with access as (
+    select exists (
+      select 1
+      from public.profiles
+      where profiles.id = auth.uid()
+        and (profiles.role = 'creator' or profiles.wild_camping_access = true)
+    ) as can_view_wild
+  )
   select
     place_categories.id,
     place_categories.place_id,
@@ -413,9 +440,10 @@ as $$
     place_categories.heading_photo_thumb_url
   from public.place_categories
   join public.places on places.id = place_categories.place_id
+  cross join access
   where place_categories.place_id = any(coalesce(target_place_ids, '{}'::uuid[]))
     and place_categories.key in ('campsite', 'accommodation')
-    and public.can_view_place_type(places.place_type)
+    and (places.place_type <> 'wild-camping' or access.can_view_wild)
   order by
     array_position(coalesce(target_place_ids, '{}'::uuid[]), place_categories.place_id),
     case place_categories.key
@@ -432,6 +460,14 @@ stable
 security definer
 set search_path = public
 as $$
+  with access as (
+    select exists (
+      select 1
+      from public.profiles
+      where profiles.id = auth.uid()
+        and (profiles.role = 'creator' or profiles.wild_camping_access = true)
+    ) as can_view_wild
+  )
   select jsonb_build_object(
     'id', places.id,
     'title', places.title,
@@ -450,6 +486,7 @@ as $$
     'place_comments', '[]'::jsonb
   )
   from public.places
+  cross join access
   left join lateral (
     select jsonb_agg(
       jsonb_build_object(
@@ -476,7 +513,7 @@ as $$
     where place_categories.place_id = places.id
   ) categories on true
   where places.id = target_place_id
-    and public.can_view_place_type(places.place_type);
+    and (places.place_type <> 'wild-camping' or access.can_view_wild);
 $$;
 
 create or replace function public.get_place_category_extras(target_place_id uuid)
@@ -497,6 +534,14 @@ stable
 security definer
 set search_path = public
 as $$
+  with access as (
+    select exists (
+      select 1
+      from public.profiles
+      where profiles.id = auth.uid()
+        and (profiles.role = 'creator' or profiles.wild_camping_access = true)
+    ) as can_view_wild
+  )
   select
     place_categories.id,
     place_categories.place_id,
@@ -510,8 +555,9 @@ as $$
     place_categories.strava
   from public.place_categories
   join public.places on places.id = place_categories.place_id
+  cross join access
   where place_categories.place_id = target_place_id
-    and public.can_view_place_type(places.place_type)
+    and (places.place_type <> 'wild-camping' or access.can_view_wild)
   order by
     case place_categories.key
       when 'campsite' then 0
@@ -535,6 +581,14 @@ stable
 security definer
 set search_path = public
 as $$
+  with access as (
+    select exists (
+      select 1
+      from public.profiles
+      where profiles.id = auth.uid()
+        and (profiles.role = 'creator' or profiles.wild_camping_access = true)
+    ) as can_view_wild
+  )
   select
     place_comments.id,
     place_comments.name,
@@ -544,8 +598,9 @@ as $$
     place_comments.avatar_url
   from public.place_comments
   join public.places on places.id = place_comments.place_id
+  cross join access
   where place_comments.place_id = target_place_id
-    and public.can_view_place_type(places.place_type)
+    and (places.place_type <> 'wild-camping' or access.can_view_wild)
   order by place_comments.created_at asc
   limit 100;
 $$;
