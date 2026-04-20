@@ -293,3 +293,349 @@ exception
     raise exception 'You have already recommended this place.' using errcode = '23505';
 end;
 $$;
+
+create index if not exists analytics_events_created_at_idx
+on public.analytics_events(created_at desc);
+
+create index if not exists analytics_events_place_id_created_at_idx
+on public.analytics_events(place_id, created_at desc);
+
+create index if not exists analytics_events_section_created_at_idx
+on public.analytics_events(section, created_at desc);
+
+create or replace function public.can_view_place_type(target_place_type text)
+returns boolean
+language sql
+stable
+security definer
+set search_path = public
+as $$
+  select
+    target_place_type <> 'wild-camping'
+    or exists (
+      select 1
+      from public.profiles
+      where profiles.id = auth.uid()
+        and (profiles.role = 'creator' or profiles.wild_camping_access = true)
+    );
+$$;
+
+create or replace function public.get_visible_places_map(limit_count integer default 250)
+returns table (
+  id uuid,
+  title text,
+  location_name text,
+  lat numeric,
+  lng numeric,
+  place_type text,
+  tags text[],
+  created_at timestamptz,
+  created_by uuid,
+  recommend_count integer
+)
+language sql
+stable
+security definer
+set search_path = public
+as $$
+  select
+    places.id,
+    places.title,
+    places.location_name,
+    places.lat,
+    places.lng,
+    places.place_type,
+    places.tags,
+    places.created_at,
+    places.created_by,
+    places.recommend_count
+  from public.places
+  where public.can_view_place_type(places.place_type)
+  order by places.created_at desc
+  limit greatest(1, least(coalesce(limit_count, 250), 500));
+$$;
+
+create or replace function public.get_place_category_summaries(target_place_ids uuid[])
+returns table (
+  id uuid,
+  place_id uuid,
+  key text,
+  heading text
+)
+language sql
+stable
+security definer
+set search_path = public
+as $$
+  select
+    place_categories.id,
+    place_categories.place_id,
+    place_categories.key,
+    place_categories.heading
+  from public.place_categories
+  join public.places on places.id = place_categories.place_id
+  where place_categories.place_id = any(coalesce(target_place_ids, '{}'::uuid[]))
+    and public.can_view_place_type(places.place_type)
+  order by
+    array_position(coalesce(target_place_ids, '{}'::uuid[]), place_categories.place_id),
+    case place_categories.key
+      when 'campsite' then 0
+      when 'accommodation' then 1
+      else 2
+    end,
+    place_categories.heading;
+$$;
+
+create or replace function public.get_place_previews(target_place_ids uuid[])
+returns table (
+  id uuid,
+  place_id uuid,
+  key text,
+  heading text,
+  description text,
+  heading_photo_name text,
+  heading_photo_url text,
+  heading_photo_thumb_url text
+)
+language sql
+stable
+security definer
+set search_path = public
+as $$
+  select
+    place_categories.id,
+    place_categories.place_id,
+    place_categories.key,
+    place_categories.heading,
+    place_categories.description,
+    place_categories.heading_photo_name,
+    place_categories.heading_photo_url,
+    place_categories.heading_photo_thumb_url
+  from public.place_categories
+  join public.places on places.id = place_categories.place_id
+  where place_categories.place_id = any(coalesce(target_place_ids, '{}'::uuid[]))
+    and place_categories.key in ('campsite', 'accommodation')
+    and public.can_view_place_type(places.place_type)
+  order by
+    array_position(coalesce(target_place_ids, '{}'::uuid[]), place_categories.place_id),
+    case place_categories.key
+      when 'campsite' then 0
+      when 'accommodation' then 1
+      else 2
+    end;
+$$;
+
+create or replace function public.get_place_detail(target_place_id uuid)
+returns jsonb
+language sql
+stable
+security definer
+set search_path = public
+as $$
+  select jsonb_build_object(
+    'id', places.id,
+    'title', places.title,
+    'location_name', places.location_name,
+    'lat', places.lat,
+    'lng', places.lng,
+    'place_type', places.place_type,
+    'contact_email', places.contact_email,
+    'tags', places.tags,
+    'about', places.about,
+    'need_to_knows', places.need_to_knows,
+    'created_at', places.created_at,
+    'created_by', places.created_by,
+    'recommend_count', places.recommend_count,
+    'place_categories', coalesce(categories.rows, '[]'::jsonb),
+    'place_comments', '[]'::jsonb
+  )
+  from public.places
+  left join lateral (
+    select jsonb_agg(
+      jsonb_build_object(
+        'id', place_categories.id,
+        'place_id', place_categories.place_id,
+        'key', place_categories.key,
+        'heading', place_categories.heading,
+        'description', place_categories.description,
+        'heading_photo_name', place_categories.heading_photo_name,
+        'heading_photo_url', place_categories.heading_photo_url,
+        'heading_photo_thumb_url', place_categories.heading_photo_thumb_url,
+        'gallery', '[]'::jsonb,
+        'strava', null
+      )
+      order by
+        case place_categories.key
+          when 'campsite' then 0
+          when 'accommodation' then 1
+          else 2
+        end,
+        place_categories.heading
+    ) as rows
+    from public.place_categories
+    where place_categories.place_id = places.id
+  ) categories on true
+  where places.id = target_place_id
+    and public.can_view_place_type(places.place_type);
+$$;
+
+create or replace function public.get_place_category_extras(target_place_id uuid)
+returns table (
+  id uuid,
+  place_id uuid,
+  key text,
+  heading text,
+  description text,
+  heading_photo_name text,
+  heading_photo_url text,
+  heading_photo_thumb_url text,
+  gallery jsonb,
+  strava jsonb
+)
+language sql
+stable
+security definer
+set search_path = public
+as $$
+  select
+    place_categories.id,
+    place_categories.place_id,
+    place_categories.key,
+    place_categories.heading,
+    place_categories.description,
+    place_categories.heading_photo_name,
+    place_categories.heading_photo_url,
+    place_categories.heading_photo_thumb_url,
+    place_categories.gallery,
+    place_categories.strava
+  from public.place_categories
+  join public.places on places.id = place_categories.place_id
+  where place_categories.place_id = target_place_id
+    and public.can_view_place_type(places.place_type)
+  order by
+    case place_categories.key
+      when 'campsite' then 0
+      when 'accommodation' then 1
+      else 2
+    end,
+    place_categories.heading;
+$$;
+
+create or replace function public.get_place_comments(target_place_id uuid)
+returns table (
+  id uuid,
+  name text,
+  email text,
+  message text,
+  created_at timestamptz,
+  avatar_url text
+)
+language sql
+stable
+security definer
+set search_path = public
+as $$
+  select
+    place_comments.id,
+    place_comments.name,
+    place_comments.email,
+    place_comments.message,
+    place_comments.created_at,
+    place_comments.avatar_url
+  from public.place_comments
+  join public.places on places.id = place_comments.place_id
+  where place_comments.place_id = target_place_id
+    and public.can_view_place_type(places.place_type)
+  order by place_comments.created_at asc
+  limit 100;
+$$;
+
+create or replace function public.get_creator_analytics()
+returns jsonb
+language plpgsql
+stable
+security definer
+set search_path = public
+as $$
+declare
+  result jsonb;
+begin
+  if not exists (
+    select 1
+    from public.profiles
+    where profiles.id = auth.uid()
+      and profiles.role = 'creator'
+  ) then
+    raise exception 'Creator access required.' using errcode = '42501';
+  end if;
+
+  select jsonb_build_object(
+    'totalVisits', count(*) filter (where event_type = 'page_view'),
+    'guestVisits', count(*) filter (where event_type = 'page_view' and visitor_role = 'guest'),
+    'logins', count(*) filter (where event_type = 'login'),
+    'eventViews', count(*) filter (where event_type = 'place_view'),
+    'eventsCreated', count(*) filter (where event_type = 'place_created'),
+    'photoUploads', coalesce(sum(photo_count), 0),
+    'sectionViews', coalesce((
+      select jsonb_object_agg(section, total)
+      from (
+        select section, count(*) as total
+        from public.analytics_events
+        where event_type = 'section_view'
+          and section is not null
+        group by section
+      ) section_totals
+    ), '{}'::jsonb),
+    'placeViews', coalesce((
+      select jsonb_object_agg(place_id::text, total)
+      from (
+        select place_id, count(*) as total
+        from public.analytics_events
+        where event_type = 'place_view'
+          and place_id is not null
+        group by place_id
+      ) place_totals
+    ), '{}'::jsonb),
+    'dailySectionViews', coalesce((
+      select jsonb_object_agg(section, days)
+      from (
+        select section, jsonb_object_agg(day, total order by day) as days
+        from (
+          select section, created_at::date::text as day, count(*) as total
+          from public.analytics_events
+          where event_type = 'section_view'
+            and section is not null
+          group by section, created_at::date
+        ) daily_section_totals
+        group by section
+      ) section_days
+    ), '{}'::jsonb),
+    'dailyPlaceViews', coalesce((
+      select jsonb_object_agg(place_id::text, days)
+      from (
+        select place_id, jsonb_object_agg(day, total order by day) as days
+        from (
+          select place_id, created_at::date::text as day, count(*) as total
+          from public.analytics_events
+          where event_type = 'place_view'
+            and place_id is not null
+          group by place_id, created_at::date
+        ) daily_place_totals
+        group by place_id
+      ) place_days
+    ), '{}'::jsonb),
+    'activeDates', coalesce((
+      select jsonb_agg(day order by day)
+      from (
+        select distinct created_at::date::text as day
+        from public.analytics_events
+        order by day
+      ) active_days
+    ), '[]'::jsonb)
+  )
+  into result
+  from public.analytics_events;
+
+  return result;
+end;
+$$;
