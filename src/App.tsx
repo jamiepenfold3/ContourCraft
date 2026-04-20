@@ -15,6 +15,8 @@ import {
   deletePlace,
   fetchAnalytics,
   fetchFavouritePlaceIds,
+  fetchPlaceCategoryExtras,
+  fetchPlaceComments,
   fetchPlaceDetails,
   fetchPlacePreviewCategories,
   fetchPlaces,
@@ -659,6 +661,7 @@ export default function App() {
         if (!active) return;
         const cachedDetail = {
           ...detailedPlace,
+          comments: selectedEvent.comments,
           categories: mergeCategoriesByKey(
             previewCategoryCacheRef.current.get(selectedPlaceId) ?? [],
             detailedPlace.categories,
@@ -680,6 +683,54 @@ export default function App() {
           next.delete(selectedPlaceId);
           return next;
         });
+        void fetchPlaceComments(selectedPlaceId)
+          .then((comments) => {
+            if (!active) return;
+            detailPlaceCacheRef.current.set(selectedPlaceId, {
+              ...(detailPlaceCacheRef.current.get(selectedPlaceId) ?? cachedDetail),
+              comments,
+            });
+            setEvents((current) =>
+              current.map((event) =>
+                event.id === selectedPlaceId
+                  ? {
+                      ...event,
+                      comments,
+                    }
+                  : event,
+              ),
+            );
+          })
+          .catch((commentsError) => {
+            if (active) {
+              setError(errorMessage(commentsError, "Failed to load comments."));
+            }
+          });
+        void fetchPlaceCategoryExtras(selectedPlaceId)
+          .then((categories) => {
+            if (!active) return;
+            const cachedPlace = detailPlaceCacheRef.current.get(selectedPlaceId) ?? cachedDetail;
+            const nextCategories = mergeCategoriesByKey(cachedPlace.categories, categories);
+            detailPlaceCacheRef.current.set(selectedPlaceId, {
+              ...cachedPlace,
+              categories: nextCategories,
+            });
+            setEvents((current) =>
+              current.map((event) =>
+                event.id === selectedPlaceId
+                  ? {
+                      ...event,
+                      categories: mergeCategoriesByKey(event.categories, nextCategories),
+                    }
+                  : event,
+              ),
+            );
+          })
+          .catch((extrasError) => {
+            if (active) {
+              setError(errorMessage(extrasError, "Failed to load galleries."));
+            }
+          });
       })
       .catch((detailsError) => {
         loadedDetailPlaceIdsRef.current.delete(selectedPlaceId);

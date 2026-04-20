@@ -412,7 +412,6 @@ export async function fetchPlaceDetails(placeId: string) {
   const [
     { data: placeRow, error: placeError },
     { data: categoryRows, error: categoryError },
-    { data: commentRows, error: commentError },
   ] = await Promise.all([
     client
       .from("places")
@@ -446,29 +445,56 @@ export async function fetchPlaceDetails(placeId: string) {
           description,
           heading_photo_name,
           heading_photo_url,
+          heading_photo_thumb_url
+        `,
+      )
+      .eq("place_id", placeId),
+  ]);
+
+  if (placeError) throw placeError;
+  if (categoryError) throw categoryError;
+
+  return mapPlace({
+    ...placeRow,
+    place_categories: categoryRows ?? [],
+    place_comments: [],
+  });
+}
+
+export async function fetchPlaceCategoryExtras(placeId: string) {
+  const client = ensureClient();
+  const { data: categoryRows, error } = await client
+    .from("place_categories")
+    .select(
+      `
+          id,
+          place_id,
+          key,
+          heading,
+          description,
+          heading_photo_name,
+          heading_photo_url,
           heading_photo_thumb_url,
           gallery,
           strava
         `,
       )
-      .eq("place_id", placeId),
-    client
-      .from("place_comments")
-      .select("id, name, email, message, created_at, avatar_url")
-      .eq("place_id", placeId)
-      .order("created_at", { ascending: false })
-      .limit(100),
-  ]);
+      .eq("place_id", placeId);
+  if (error) throw error;
+  return normalizePlaceCategories(categoryRows ?? []);
+}
 
-  if (placeError) throw placeError;
-  if (categoryError) throw categoryError;
-  if (commentError) throw commentError;
+export async function fetchPlaceComments(placeId: string) {
+  const client = ensureClient();
+  const { data: commentRows, error } = await client
+    .from("place_comments")
+    .select("id, name, email, message, created_at, avatar_url")
+    .eq("place_id", placeId)
+    .order("created_at", { ascending: false })
+    .limit(100);
 
-  return mapPlace({
-    ...placeRow,
-    place_categories: categoryRows ?? [],
-    place_comments: (commentRows ?? []).reverse(),
-  });
+  if (error) throw error;
+  return (commentRows ?? []).reverse().map(mapComment);
 }
 
 export async function createPlace(userId: string, place: PlaceInsert) {
