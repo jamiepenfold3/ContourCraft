@@ -263,10 +263,21 @@ export default function App() {
 
     let categoryRows: PreviewCategoryRow[] = [];
     try {
+      setLoadingPreviewPlaceIds((current) => {
+        const next = new Set(current);
+        previewPlaceIds.forEach((placeId) => next.add(placeId));
+        return next;
+      });
       categoryRows = await fetchPlacePreviewCategories(previewPlaceIds);
     } catch (previewError) {
       setError(errorMessage(previewError, "Failed to load place previews."));
       return places;
+    } finally {
+      setLoadingPreviewPlaceIds((current) => {
+        const next = new Set(current);
+        previewPlaceIds.forEach((placeId) => next.delete(placeId));
+        return next;
+      });
     }
 
     return places.map((place) => {
