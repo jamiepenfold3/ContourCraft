@@ -180,18 +180,10 @@ export function EventDetail({
             {category.headingPhoto ? (
               <img
                 className="category-hero"
-                src={category.headingPhoto.thumbUrl ?? category.headingPhoto.url}
+                src={category.headingPhoto.url}
                 alt={category.headingPhoto.name}
                 loading="lazy"
                 decoding="async"
-                onError={(imageEvent) => {
-                  if (
-                    category.headingPhoto?.thumbUrl &&
-                    imageEvent.currentTarget.src !== category.headingPhoto.url
-                  ) {
-                    imageEvent.currentTarget.src = category.headingPhoto.url;
-                  }
-                }}
               />
             ) : null}
             <div className="section-title">
@@ -204,15 +196,10 @@ export function EventDetail({
                 {category.gallery.map((photo) => (
                   <img
                     key={photo.id}
-                    src={photo.thumbUrl ?? photo.url}
+                    src={photo.url}
                     alt={photo.name}
                     loading="lazy"
                     decoding="async"
-                    onError={(imageEvent) => {
-                      if (photo.thumbUrl && imageEvent.currentTarget.src !== photo.url) {
-                        imageEvent.currentTarget.src = photo.url;
-                      }
-                    }}
                   />
                 ))}
               </div>

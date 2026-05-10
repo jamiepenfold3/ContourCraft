@@ -564,9 +564,7 @@ textarea {
 .strava-card img {
   width: 100%;
   height: auto;
-  max-height: 78vh;
-  object-fit: contain;
-  object-position: center;
+  max-height: none;
   border-radius: 24px;
   background: rgba(24, 53, 40, 0.04);
 }
@@ -606,9 +604,7 @@ textarea {
 .category-hero {
   width: 100%;
   height: auto;
-  max-height: 78vh;
-  object-fit: contain;
-  object-position: center;
+  max-height: none;
   border-radius: 22px;
   background: rgba(24, 53, 40, 0.04);
 }
