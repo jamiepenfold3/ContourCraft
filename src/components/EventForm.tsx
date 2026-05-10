@@ -34,8 +34,17 @@ type EventFormProps = {
   onCancel: () => void;
 };
 
-type CategoryDraft = {
-  enabled: boolean;
+type RepeatableSectionKey =
+  | "trails"
+  | "eating_out"
+  | "eating_in"
+  | "wine_tasting"
+  | "beer_tasting"
+  | "swim";
+
+type SectionDraft = {
+  clientId: string;
+  key: Exclude<CategoryKey, "strava" | "trails_2">;
   heading: string;
   description: string;
   headingPhoto?: PhotoAsset;
@@ -43,11 +52,8 @@ type CategoryDraft = {
   strava: StravaUpload;
 };
 
-const categoryMeta: Array<{ key: CategoryKey; label: string }> = [
-  { key: "campsite", label: "Camping" },
-  { key: "accommodation", label: "Accommodation" },
-  { key: "trails", label: "Trail run / hike 1" },
-  { key: "trails_2", label: "Trail run / hike 2" },
+const repeatableSectionOptions: Array<{ key: RepeatableSectionKey; label: string }> = [
+  { key: "trails", label: "Trail run / hike" },
   { key: "eating_out", label: "Eating out" },
   { key: "eating_in", label: "Eating in" },
   { key: "wine_tasting", label: "Wine tasting" },
@@ -55,22 +61,68 @@ const categoryMeta: Array<{ key: CategoryKey; label: string }> = [
   { key: "swim", label: "Swim spots" },
 ];
 
+const sectionLabels: Record<SectionDraft["key"], string> = {
+  campsite: "Camping",
+  accommodation: "Non-camping",
+  trails: "Trail run / hike",
+  eating_out: "Eating out",
+  eating_in: "Eating in",
+  wine_tasting: "Wine tasting",
+  beer_tasting: "Beer tasting",
+  swim: "Swim spots",
+};
+
 const emptyStrava = (): StravaUpload => ({
   activityUrl: "",
 });
 
-const emptyCategories = (): Record<CategoryKey, CategoryDraft> => ({
-  campsite: { enabled: false, heading: "", description: "", gallery: [], strava: emptyStrava() },
-  accommodation: { enabled: false, heading: "", description: "", gallery: [], strava: emptyStrava() },
-  trails: { enabled: false, heading: "", description: "", gallery: [], strava: emptyStrava() },
-  trails_2: { enabled: false, heading: "", description: "", gallery: [], strava: emptyStrava() },
-  eating_out: { enabled: false, heading: "", description: "", gallery: [], strava: emptyStrava() },
-  eating_in: { enabled: false, heading: "", description: "", gallery: [], strava: emptyStrava() },
-  wine_tasting: { enabled: false, heading: "", description: "", gallery: [], strava: emptyStrava() },
-  beer_tasting: { enabled: false, heading: "", description: "", gallery: [], strava: emptyStrava() },
-  swim: { enabled: false, heading: "", description: "", gallery: [], strava: emptyStrava() },
-  strava: { enabled: false, heading: "Strava activity", description: "Strava activity link", gallery: [], strava: emptyStrava() },
+const createSectionDraft = (
+  key: SectionDraft["key"],
+  overrides: Partial<Omit<SectionDraft, "clientId" | "key">> = {},
+): SectionDraft => ({
+  clientId: crypto.randomUUID(),
+  key,
+  heading: "",
+  description: "",
+  gallery: [],
+  strava: emptyStrava(),
+  ...overrides,
 });
+
+const getBaseSectionKey = (placeType: PlaceType): "campsite" | "accommodation" =>
+  placeType === "non-camping" ? "accommodation" : "campsite";
+
+const ensureBaseSection = (sections: SectionDraft[], placeType: PlaceType) => {
+  const baseKey = getBaseSectionKey(placeType);
+  const filteredSections = sections.filter(
+    (section) => section.key !== "campsite" && section.key !== "accommodation",
+  );
+  const existingBaseSection = sections.find((section) => section.key === baseKey);
+
+  return [
+    existingBaseSection ?? createSectionDraft(baseKey),
+    ...filteredSections,
+  ];
+};
+
+const sectionsFromEvent = (event?: AdventureEvent | null, placeType?: PlaceType) => {
+  const rawSections: SectionDraft[] = (event?.categories ?? [])
+    .filter((category) => category.key !== "strava")
+    .map((category) =>
+      createSectionDraft(
+        (category.key === "trails_2" ? "trails" : category.key) as SectionDraft["key"],
+        {
+          heading: category.heading,
+          description: category.description,
+          headingPhoto: category.headingPhoto,
+          gallery: category.gallery,
+          strava: category.strava ?? emptyStrava(),
+        },
+      ),
+    );
+
+  return ensureBaseSection(rawSections, placeType ?? event?.placeType ?? "camping");
+};
 
 const fileToDataUrl = (file: File) =>
   new Promise<string>((resolve, reject) => {
@@ -94,26 +146,6 @@ const stravaIdFromUrl = (url: string) => {
   return match?.[1];
 };
 
-const isTrailCategory = (key: CategoryKey) => key === "trails" || key === "trails_2";
-
-const categoriesToDrafts = (event?: AdventureEvent | null) => {
-  const drafts = emptyCategories();
-  if (!event) return drafts;
-
-  for (const category of event.categories) {
-    drafts[category.key] = {
-      enabled: true,
-      heading: category.heading,
-      description: category.description,
-      headingPhoto: category.headingPhoto,
-      gallery: category.gallery,
-      strava: category.strava ?? emptyStrava(),
-    };
-  }
-
-  return drafts;
-};
-
 export function EventForm({
   currentUser,
   pickedPoint,
@@ -129,13 +161,12 @@ export function EventForm({
   const [placeType, setPlaceType] = useState<PlaceType>(initialEvent?.placeType ?? "camping");
   const [tags, setTags] = useState(initialEvent?.tags.join(", ") ?? "");
   const [needToKnows, setNeedToKnows] = useState(initialEvent?.needToKnows ?? "");
-  const [categories, setCategories] =
-    useState<Record<CategoryKey, CategoryDraft>>(() => categoriesToDrafts(initialEvent));
+  const [sections, setSections] = useState<SectionDraft[]>(() =>
+    sectionsFromEvent(initialEvent, initialEvent?.placeType),
+  );
+  const [newSectionKey, setNewSectionKey] = useState<RepeatableSectionKey>("trails");
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
-  const categoryOptions = categoryMeta.filter(({ key }) =>
-    placeType === "non-camping" ? key !== "campsite" : key !== "accommodation",
-  );
 
   useEffect(() => {
     setTitle(initialEvent?.title ?? "");
@@ -144,43 +175,26 @@ export function EventForm({
     setPlaceType(initialEvent?.placeType ?? "camping");
     setTags(initialEvent?.tags.join(", ") ?? "");
     setNeedToKnows(initialEvent?.needToKnows ?? "");
-    setCategories(categoriesToDrafts(initialEvent));
+    setSections(sectionsFromEvent(initialEvent, initialEvent?.placeType));
   }, [initialEvent]);
 
   useEffect(() => {
-    setCategories((current) => {
-      if (placeType === "non-camping") {
-        return {
-          ...current,
-          accommodation: { ...current.accommodation, enabled: true },
-          campsite: { ...current.campsite, enabled: false },
-        };
-      }
-
-      return {
-        ...current,
-        campsite: { ...current.campsite, enabled: true },
-        accommodation: { ...current.accommodation, enabled: false },
-      };
-    });
+    setSections((current) => ensureBaseSection(current, placeType));
   }, [placeType]);
-
-  const enabledCategories = categoryOptions.filter(({ key }) => categories[key].enabled);
 
   const canSubmit = useMemo(() => {
     const hasPoint = Boolean(pickedPoint || initialEvent);
     if (!hasPoint || !title.trim() || !locationName.trim() || !needToKnows.trim()) {
       return false;
     }
-    if (!enabledCategories.length) {
+    if (!sections.length) {
       return false;
     }
 
-    return enabledCategories.every(({ key }) => {
-      const category = categories[key];
-      return Boolean(category.heading.trim() && category.description.trim() && category.headingPhoto);
-    });
-  }, [categories, enabledCategories, initialEvent, locationName, needToKnows, pickedPoint, title]);
+    return sections.every((section) =>
+      Boolean(section.heading.trim() && section.description.trim() && section.headingPhoto),
+    );
+  }, [initialEvent, locationName, needToKnows, pickedPoint, sections, title]);
 
   const validationMessage = useMemo(() => {
     const hasPoint = Boolean(pickedPoint || initialEvent);
@@ -188,44 +202,63 @@ export function EventForm({
     if (!title.trim()) return "Add a location title.";
     if (!locationName.trim()) return "Add an area / place name.";
     if (!needToKnows.trim()) return "Add need-to-knows.";
-    if (!enabledCategories.length) return "Choose at least one section.";
+    if (!sections.length) return "Add at least one section.";
 
-    for (const { key, label } of enabledCategories) {
-      const category = categories[key];
-      if (!category.heading.trim()) return `Add a heading for ${label}.`;
-      if (!category.description.trim()) return `Add a note for ${label}.`;
-      if (!category.headingPhoto) return `Upload a heading picture for ${label}.`;
+    for (const section of sections) {
+      const label = sectionLabels[section.key];
+      if (!section.heading.trim()) return `Add a heading for ${label}.`;
+      if (!section.description.trim()) return `Add a note for ${label}.`;
+      if (!section.headingPhoto) return `Upload a heading picture for ${label}.`;
     }
 
     return null;
-  }, [categories, enabledCategories, initialEvent, locationName, needToKnows, pickedPoint, title]);
+  }, [initialEvent, locationName, needToKnows, pickedPoint, sections, title]);
 
-  const updateCategory = (key: CategoryKey, next: Partial<CategoryDraft>) => {
-    setCategories((current) => {
-      const nextCategories = {
-        ...current,
-        [key]: {
-          ...current[key],
-          ...next,
-        },
-      };
-
-      return nextCategories;
-    });
+  const updateSection = (clientId: string, next: Partial<SectionDraft>) => {
+    setSections((current) =>
+      current.map((section) =>
+        section.clientId === clientId
+          ? {
+              ...section,
+              ...next,
+            }
+          : section,
+      ),
+    );
   };
 
-  const handleHeadingPhoto = async (key: CategoryKey, event: ChangeEvent<HTMLInputElement>) => {
+  const handleHeadingPhoto = async (
+    clientId: string,
+    event: ChangeEvent<HTMLInputElement>,
+  ) => {
     const file = event.target.files?.[0];
     if (!file) return;
     const [asset] = await filesToAssets([file]);
-    updateCategory(key, { headingPhoto: asset });
+    updateSection(clientId, { headingPhoto: asset });
   };
 
-  const handleGalleryUpload = async (key: CategoryKey, event: ChangeEvent<HTMLInputElement>) => {
+  const handleGalleryUpload = async (
+    clientId: string,
+    event: ChangeEvent<HTMLInputElement>,
+  ) => {
     const files = Array.from(event.target.files ?? []);
     if (!files.length) return;
     const assets = await filesToAssets(files);
-    updateCategory(key, { gallery: [...categories[key].gallery, ...assets] });
+    setSections((current) =>
+      current.map((section) =>
+        section.clientId === clientId
+          ? { ...section, gallery: [...section.gallery, ...assets] }
+          : section,
+      ),
+    );
+  };
+
+  const addSection = () => {
+    setSections((current) => [...current, createSectionDraft(newSectionKey)]);
+  };
+
+  const removeSection = (clientId: string) => {
+    setSections((current) => current.filter((section) => section.clientId !== clientId));
   };
 
   const resetForm = () => {
@@ -235,7 +268,8 @@ export function EventForm({
     setPlaceType("camping");
     setTags("");
     setNeedToKnows("");
-    setCategories(emptyCategories());
+    setSections(ensureBaseSection([], "camping"));
+    setNewSectionKey("trails");
   };
 
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
@@ -249,22 +283,22 @@ export function EventForm({
     const point = pickedPoint ?? initialEvent;
     if (!point) return;
 
-    const builtCategories: LocationCategory[] = enabledCategories.map(({ key }) => {
-      const category = categories[key];
-      const stravaUrl = category.strava.activityUrl?.trim() ?? "";
+    const builtCategories: LocationCategory[] = sections.map((section) => {
+      const stravaUrl = section.strava.activityUrl?.trim() ?? "";
 
       return {
-        key,
-        heading: category.heading.trim(),
-        description: category.description.trim(),
-        headingPhoto: category.headingPhoto!,
-        gallery: category.gallery,
+        id: section.clientId,
+        key: section.key,
+        heading: section.heading.trim(),
+        description: section.description.trim(),
+        headingPhoto: section.headingPhoto!,
+        gallery: section.gallery,
         strava:
-          isTrailCategory(key) && stravaUrl
+          section.key === "trails" && stravaUrl
             ? {
                 activityUrl: stravaUrl,
                 activityId: stravaIdFromUrl(stravaUrl),
-                title: category.heading.trim(),
+                title: section.heading.trim(),
               }
             : undefined,
       };
@@ -289,12 +323,18 @@ export function EventForm({
       categories: builtCategories,
     };
 
+    const photoCount = builtCategories.reduce(
+      (total, category) =>
+        total + (category.headingPhoto ? 1 : 0) + category.gallery.length,
+      0,
+    );
+
     setIsSubmitting(true);
     try {
       if (isEditing && initialEvent && onUpdateEvent) {
-        await onUpdateEvent(initialEvent.id, payload, builtCategories.reduce((total, category) => total + (category.headingPhoto ? 1 : 0) + category.gallery.length, 0));
+        await onUpdateEvent(initialEvent.id, payload, photoCount);
       } else {
-        await onCreateEvent(payload, builtCategories.reduce((total, category) => total + (category.headingPhoto ? 1 : 0) + category.gallery.length, 0));
+        await onCreateEvent(payload, photoCount);
       }
       resetForm();
       onCancel();
@@ -310,7 +350,7 @@ export function EventForm({
       <div className="panel-heading">
         <div>
           <p className="eyebrow">{isEditing ? "Edit map location" : "Create new map location"}</p>
-          <h2>{isEditing ? "Update this entry" : "Pick a point, classify it, then publish"}</h2>
+          <h2>{isEditing ? "Update this entry" : "Pick a point, build sections, then publish"}</h2>
         </div>
         <button type="button" className="ghost-button" onClick={onCancel}>
           Close
@@ -367,61 +407,107 @@ export function EventForm({
         <textarea rows={4} value={needToKnows} onChange={(event) => setNeedToKnows(event.target.value)} />
       </label>
 
-      <div className="category-toggle-grid">
-        {categoryOptions.map(({ key, label }) => (
-          <label className="toggle-card" key={key}>
-            <input
-              type="checkbox"
-              checked={categories[key].enabled}
-              disabled={key === "campsite" || key === "accommodation"}
-              onChange={(event) => updateCategory(key, { enabled: event.target.checked })}
-            />
-            <span>{label}</span>
-          </label>
-        ))}
-      </div>
-
-      {enabledCategories.map(({ key, label }) => (
-        <section className="category-editor" key={key}>
-          <div className="section-title">
-            <h3>{label}</h3>
-            <span className="author-chip">Heading picture required</span>
-          </div>
-
-          <div className="form-grid">
-            <label>
-              Section heading
-              <input value={categories[key].heading} onChange={(event) => updateCategory(key, { heading: event.target.value })} />
-            </label>
-            <label>
-              Heading picture
-              <input type="file" accept="image/*" onChange={(event) => handleHeadingPhoto(key, event)} />
-            </label>
-          </div>
+      <section className="category-editor">
+        <div className="section-title">
+          <h3>Add sections</h3>
+          <span className="author-chip">
+            {getBaseSectionKey(placeType) === "campsite" ? "Camping included" : "Non-camping included"}
+          </span>
+        </div>
+        <div className="form-grid">
           <label>
-            Section note
-            <textarea rows={4} value={categories[key].description} onChange={(event) => updateCategory(key, { description: event.target.value })} />
+            Section type
+            <select
+              value={newSectionKey}
+              onChange={(event) => setNewSectionKey(event.target.value as RepeatableSectionKey)}
+            >
+              {repeatableSectionOptions.map((option) => (
+                <option key={option.key} value={option.key}>
+                  {option.label}
+                </option>
+              ))}
+            </select>
           </label>
-          {isTrailCategory(key) ? (
+          <div className="event-form-action">
+            <button type="button" className="ghost-button" onClick={addSection}>
+              Add section
+            </button>
+          </div>
+        </div>
+      </section>
+
+      {sections.map((section, index) => {
+        const isBaseSection = index === 0;
+        const label = sectionLabels[section.key];
+
+        return (
+          <section className="category-editor" key={section.clientId}>
+            <div className="section-title">
+              <h3>{label}</h3>
+              {isBaseSection ? (
+                <span className="author-chip">Required from place type</span>
+              ) : (
+                <button
+                  type="button"
+                  className="ghost-button"
+                  onClick={() => removeSection(section.clientId)}
+                >
+                  Remove
+                </button>
+              )}
+            </div>
+
+            <div className="form-grid">
+              <label>
+                Section heading
+                <input
+                  value={section.heading}
+                  onChange={(event) => updateSection(section.clientId, { heading: event.target.value })}
+                />
+              </label>
+              <label>
+                Heading picture
+                <input
+                  type="file"
+                  accept="image/*"
+                  onChange={(event) => handleHeadingPhoto(section.clientId, event)}
+                />
+              </label>
+            </div>
             <label>
-              Strava activity link
-              <input
-                value={categories[key].strava.activityUrl ?? ""}
-                onChange={(event) =>
-                  updateCategory(key, {
-                    strava: { activityUrl: event.target.value },
-                  })
-                }
-                placeholder="https://www.strava.com/activities/123456789"
+              Section note
+              <textarea
+                rows={4}
+                value={section.description}
+                onChange={(event) => updateSection(section.clientId, { description: event.target.value })}
               />
             </label>
-          ) : null}
-          <label>
-            Gallery images
-            <input type="file" accept="image/*" multiple onChange={(event) => handleGalleryUpload(key, event)} />
-          </label>
-        </section>
-      ))}
+            {section.key === "trails" ? (
+              <label>
+                Strava activity link
+                <input
+                  value={section.strava.activityUrl ?? ""}
+                  onChange={(event) =>
+                    updateSection(section.clientId, {
+                      strava: { activityUrl: event.target.value },
+                    })
+                  }
+                  placeholder="https://www.strava.com/activities/123456789"
+                />
+              </label>
+            ) : null}
+            <label>
+              Gallery images
+              <input
+                type="file"
+                accept="image/*"
+                multiple
+                onChange={(event) => handleGalleryUpload(section.clientId, event)}
+              />
+            </label>
+          </section>
+        );
+      })}
 
       <button type="submit" className="primary-button" disabled={!canSubmit || isSubmitting}>
         {isSubmitting ? "Saving..." : isEditing ? "Update entry" : "Save map location"}

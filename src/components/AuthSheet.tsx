@@ -110,7 +110,7 @@ export function AuthSheet({
           <p className="eyebrow">Signed in</p>
           <div className="profile-summary">
             {profile.avatarUrl ? (
-              <img src={profile.avatarUrl} alt={profile.fullName} />
+              <img src={profile.avatarUrl} alt={profile.fullName} loading="lazy" decoding="async" />
             ) : (
               <span>{profile.fullName.slice(0, 1).toUpperCase()}</span>
             )}

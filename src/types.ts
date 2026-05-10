@@ -30,6 +30,7 @@ export type CategoryKey =
   | "strava";
 
 export type LocationCategory = {
+  id?: string;
   key: CategoryKey;
   heading: string;
   description: string;

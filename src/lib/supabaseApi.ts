@@ -50,6 +50,57 @@ const dataUrlToBlob = async (dataUrl: string) => {
   return response.blob();
 };
 
+const resizeImageBlob = async (
+  blob: Blob,
+  options: {
+    maxWidth: number;
+    maxHeight: number;
+    quality: number;
+  },
+) => {
+  if (!blob.type.startsWith("image/")) {
+    return blob;
+  }
+
+  const imageUrl = URL.createObjectURL(blob);
+  try {
+    const image = await new Promise<HTMLImageElement>((resolve, reject) => {
+      const nextImage = new Image();
+      nextImage.onload = () => resolve(nextImage);
+      nextImage.onerror = reject;
+      nextImage.src = imageUrl;
+    });
+
+    const scale = Math.min(
+      1,
+      options.maxWidth / image.width,
+      options.maxHeight / image.height,
+    );
+
+    if (scale >= 1) {
+      return blob;
+    }
+
+    const canvas = document.createElement("canvas");
+    canvas.width = Math.round(image.width * scale);
+    canvas.height = Math.round(image.height * scale);
+    const context = canvas.getContext("2d");
+    if (!context) {
+      return blob;
+    }
+
+    context.drawImage(image, 0, 0, canvas.width, canvas.height);
+
+    const resizedBlob = await new Promise<Blob | null>((resolve) =>
+      canvas.toBlob(resolve, "image/jpeg", options.quality),
+    );
+
+    return resizedBlob ?? blob;
+  } finally {
+    URL.revokeObjectURL(imageUrl);
+  }
+};
+
 const getPublicStorageUrl = (path: string, transform?: { width: number; quality: number }) => {
   const client = ensureClient();
   const { data } = client.storage.from(PHOTO_BUCKET).getPublicUrl(
@@ -76,7 +127,12 @@ const uploadPhotoAsset = async (
   }
 
   const client = ensureClient();
-  const blob = await dataUrlToBlob(asset.url);
+  const originalBlob = await dataUrlToBlob(asset.url);
+  const blob = await resizeImageBlob(originalBlob, {
+    maxWidth: 1800,
+    maxHeight: 1800,
+    quality: 0.82,
+  });
   const path = `${pathPrefix}/${crypto.randomUUID()}-${safeFileName(asset.name)}`;
   const { error } = await client.storage.from(PHOTO_BUCKET).upload(path, blob, {
     cacheControl: "31536000",
@@ -133,6 +189,7 @@ const mapProfile = (row: any): AppProfile => ({
 });
 
 const mapCategory = (row: any): LocationCategory => ({
+  id: row.id,
   key: normalizeCategoryKey(row.key),
   heading: row.heading,
   description: row.description ?? "",

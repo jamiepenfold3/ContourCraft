@@ -58,6 +58,73 @@ type MapFilterKey =
   | "swim";
 
 const currentHashId = () => window.location.hash.replace(/^#location-/, "") || null;
+const PLACE_CACHE_KEY = "contourcraft-place-cache-v1";
+const PLACE_CACHE_TTL_MS = 1000 * 60 * 15;
+
+const toCachedPlaces = (events: AdventureEvent[]) =>
+  events.map((event) => ({
+    id: event.id,
+    title: event.title,
+    locationName: event.locationName,
+    lat: event.lat,
+    lng: event.lng,
+    placeType: event.placeType,
+    contactEmail: "",
+    tags: event.tags,
+    about: "",
+    needToKnows: event.needToKnows,
+    createdById: event.createdById,
+    createdBy: event.createdBy,
+    createdAt: event.createdAt,
+    recommendCount: event.recommendCount,
+    comments: [],
+    categories: event.categories.map((category) => ({
+      id: category.id,
+      key: category.key,
+      heading: category.heading,
+      description: category.description,
+      headingPhoto: category.headingPhoto
+        ? {
+            id: category.headingPhoto.id,
+            name: category.headingPhoto.name,
+            url: category.headingPhoto.url,
+            thumbUrl: category.headingPhoto.thumbUrl,
+            storagePath: category.headingPhoto.storagePath,
+          }
+        : undefined,
+      gallery: [],
+      strava: undefined,
+    })),
+  }));
+
+const readCachedPlaces = (): AdventureEvent[] | null => {
+  try {
+    const raw = window.sessionStorage.getItem(PLACE_CACHE_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as { savedAt: number; places: AdventureEvent[] };
+    if (!parsed.savedAt || Date.now() - parsed.savedAt > PLACE_CACHE_TTL_MS) {
+      window.sessionStorage.removeItem(PLACE_CACHE_KEY);
+      return null;
+    }
+    return parsed.places;
+  } catch {
+    return null;
+  }
+};
+
+const writeCachedPlaces = (events: AdventureEvent[]) => {
+  try {
+    window.sessionStorage.setItem(
+      PLACE_CACHE_KEY,
+      JSON.stringify({
+        savedAt: Date.now(),
+        places: toCachedPlaces(events),
+      }),
+    );
+  } catch {
+    // Ignore cache quota and serialization failures.
+  }
+};
 
 const sortEvents = (events: AdventureEvent[]) =>
   [...events].sort((left, right) => right.createdAt.localeCompare(left.createdAt));
@@ -69,9 +136,12 @@ const mergeCategoriesByKey = (
   const mergedCategories = [...existingCategories];
 
   for (const nextCategory of nextCategories) {
-    const existingIndex = mergedCategories.findIndex(
-      (category) => category.key === nextCategory.key,
-    );
+    const existingIndex = mergedCategories.findIndex((category) => {
+      if (category.id && nextCategory.id) {
+        return category.id === nextCategory.id;
+      }
+      return category.key === nextCategory.key && category.heading === nextCategory.heading;
+    });
     if (existingIndex === -1) {
       mergedCategories.push(nextCategory);
       continue;
@@ -141,6 +211,7 @@ const mapPreviewCategories = (categoryRows: PreviewCategoryRow[], placeId: strin
   categoryRows
     .filter((category) => category.place_id === placeId)
     .map((category) => ({
+      id: category.id,
       key: category.key,
       heading: category.heading,
       description: category.description,
@@ -164,6 +235,7 @@ const mapCategorySummaries = (categoryRows: CategorySummaryRow[], placeId: strin
   categoryRows
     .filter((category) => category.place_id === placeId)
     .map((category) => ({
+      id: category.id,
       key: category.key,
       heading: category.heading,
       description: "",
@@ -271,7 +343,9 @@ export default function App() {
 
   const setFetchedPlaces = (places: AdventureEvent[]) => {
     clearLoadingPlaceState();
-    setEvents(sortEvents(applyCachedPlaceData(places)));
+    const nextPlaces = sortEvents(applyCachedPlaceData(places));
+    setEvents(nextPlaces);
+    writeCachedPlaces(nextPlaces);
   };
 
   const invalidatePlaceCache = (placeId: string) => {
@@ -380,6 +454,17 @@ export default function App() {
     }
 
     let active = true;
+    const cachedPlaces = readCachedPlaces();
+    if (cachedPlaces?.length) {
+      cachedPlaces.forEach((place) => {
+        if (place.categories.length) {
+          previewCategoryCacheRef.current.set(place.id, place.categories);
+          loadedPreviewCategoryPlaceIdsRef.current.add(place.id);
+        }
+      });
+      setEvents(sortEvents(cachedPlaces));
+      setIsLoading(false);
+    }
 
     const boot = async () => {
       try {
@@ -537,6 +622,13 @@ export default function App() {
   useEffect(() => {
     if (showFavourites) scrollToSection(favouritesSectionRef);
   }, [showFavourites]);
+
+  useEffect(() => {
+    if (!isSupabaseConfigured || isLoading || !events.length) {
+      return;
+    }
+    writeCachedPlaces(events);
+  }, [events, isLoading]);
 
   const visibleEvents = useMemo(
     () =>
@@ -1125,7 +1217,7 @@ export default function App() {
                 <div className="category-toggle-grid">
                   {[
                     ["campsite", "Camping"],
-                    ["accommodation", "Accommodation"],
+                    ["accommodation", "Non-camping"],
                     ["trails", "Trail run / hike"],
                     ["eating_out", "Eating out"],
                     ["eating_in", "Eating in"],
@@ -1204,12 +1296,12 @@ export default function App() {
                     {previewPhoto ? (
                       <img
                         className="event-preview-image"
-                        src={previewPhoto.url}
+                        src={previewPhoto.thumbUrl ?? previewPhoto.url}
                         alt={previewPhoto.name}
-                        loading="eager"
+                        loading="lazy"
                         decoding="async"
                         onError={(imageEvent) =>
-                          handlePreviewImageError(imageEvent, previewPhoto.thumbUrl)
+                          handlePreviewImageError(imageEvent, previewPhoto.url)
                         }
                       />
                     ) : isPreviewLoading ? (
@@ -1349,12 +1441,12 @@ export default function App() {
                         {previewPhoto ? (
                           <img
                             className="event-preview-image"
-                            src={previewPhoto.url}
+                            src={previewPhoto.thumbUrl ?? previewPhoto.url}
                             alt={previewPhoto.name}
-                            loading="eager"
+                            loading="lazy"
                             decoding="async"
                             onError={(imageEvent) =>
-                              handlePreviewImageError(imageEvent, previewPhoto.thumbUrl)
+                              handlePreviewImageError(imageEvent, previewPhoto.url)
                             }
                           />
                         ) : null}

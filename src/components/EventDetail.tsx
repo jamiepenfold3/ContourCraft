@@ -24,7 +24,7 @@ type EventDetailProps = {
 
 const sectionLabels: Partial<Record<CategoryKey, string>> = {
   campsite: "Campsite",
-  accommodation: "Accommodation",
+  accommodation: "Non-camping",
   trails: "Trail run / hike 1",
   trails_2: "Trail run / hike 2",
   eating_out: "Eating out",
@@ -170,18 +170,28 @@ export function EventDetail({
       </div>
 
       <div className="section-stack">
-        {event.categories.filter((category) => category.key !== "strava").map((category) => (
+        {event.categories.filter((category) => category.key !== "strava").map((category, index) => (
           <article
             className="category-card"
-            key={category.key}
+            key={category.id ?? `${category.key}-${category.heading}-${index}`}
             onMouseEnter={() => onTrackSection(category.key)}
             onTouchStart={() => onTrackSection(category.key)}
           >
             {category.headingPhoto ? (
               <img
                 className="category-hero"
-                src={category.headingPhoto.url}
+                src={category.headingPhoto.thumbUrl ?? category.headingPhoto.url}
                 alt={category.headingPhoto.name}
+                loading="lazy"
+                decoding="async"
+                onError={(imageEvent) => {
+                  if (
+                    category.headingPhoto?.thumbUrl &&
+                    imageEvent.currentTarget.src !== category.headingPhoto.url
+                  ) {
+                    imageEvent.currentTarget.src = category.headingPhoto.url;
+                  }
+                }}
               />
             ) : null}
             <div className="section-title">
@@ -192,7 +202,18 @@ export function EventDetail({
             {category.gallery.length ? (
               <div className="photo-strip">
                 {category.gallery.map((photo) => (
-                  <img key={photo.id} src={photo.url} alt={photo.name} />
+                  <img
+                    key={photo.id}
+                    src={photo.thumbUrl ?? photo.url}
+                    alt={photo.name}
+                    loading="lazy"
+                    decoding="async"
+                    onError={(imageEvent) => {
+                      if (photo.thumbUrl && imageEvent.currentTarget.src !== photo.url) {
+                        imageEvent.currentTarget.src = photo.url;
+                      }
+                    }}
+                  />
                 ))}
               </div>
             ) : null}
@@ -211,7 +232,12 @@ export function EventDetail({
                   <StravaEmbed activityId={category.strava.activityId} />
                 ) : null}
                 {!category.strava.activityId && category.strava.image ? (
-                  <img src={category.strava.image} alt={category.strava.title ?? "Strava activity"} />
+                  <img
+                    src={category.strava.image}
+                    alt={category.strava.title ?? "Strava activity"}
+                    loading="lazy"
+                    decoding="async"
+                  />
                 ) : null}
                 {category.strava.activityUrl ? (
                   <a
@@ -266,7 +292,7 @@ export function EventDetail({
           {profile ? (
             <div className="commenting-as">
               {profile.avatarUrl ? (
-                <img src={profile.avatarUrl} alt={profile.fullName} />
+                <img src={profile.avatarUrl} alt={profile.fullName} loading="lazy" decoding="async" />
               ) : null}
               <p className="guest-copy">Commenting as {profile.fullName}.</p>
             </div>
@@ -323,7 +349,7 @@ export function EventDetail({
                   <div className="section-title">
                     <div className="comment-author">
                       {comment.avatarUrl ? (
-                        <img src={comment.avatarUrl} alt={comment.name} />
+                        <img src={comment.avatarUrl} alt={comment.name} loading="lazy" decoding="async" />
                       ) : null}
                       <strong>{comment.name}</strong>
                     </div>
