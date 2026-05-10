@@ -259,9 +259,10 @@ img {
 
 .event-preview-image {
   width: 84px;
-  height: 84px;
-  object-fit: contain;
-  border-radius: 8px;
+  height: 105px;
+  object-fit: cover;
+  object-position: center;
+  border-radius: 12px;
   grid-row: 1 / span 3;
   grid-column: 1;
   background: rgba(24, 53, 40, 0.04);
@@ -269,7 +270,7 @@ img {
 
 .event-preview-loading {
   width: 84px;
-  height: 84px;
+  height: 105px;
   border-radius: 12px;
   grid-row: 1 / span 3;
   grid-column: 1;
@@ -562,8 +563,10 @@ textarea {
 .photo-strip img,
 .strava-card img {
   width: 100%;
-  max-height: 260px;
+  height: auto;
+  max-height: 78vh;
   object-fit: contain;
+  object-position: center;
   border-radius: 24px;
   background: rgba(24, 53, 40, 0.04);
 }
@@ -603,8 +606,11 @@ textarea {
 .category-hero {
   width: 100%;
   height: auto;
+  max-height: 78vh;
   object-fit: contain;
+  object-position: center;
   border-radius: 22px;
+  background: rgba(24, 53, 40, 0.04);
 }
 
 .strava-card strong {
