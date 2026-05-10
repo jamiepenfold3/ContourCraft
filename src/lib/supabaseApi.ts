@@ -50,74 +50,6 @@ const dataUrlToBlob = async (dataUrl: string) => {
   return response.blob();
 };
 
-const resizeImageBlob = async (
-  blob: Blob,
-  options: {
-    maxWidth: number;
-    maxHeight: number;
-    quality: number;
-  },
-) => {
-  if (!blob.type.startsWith("image/")) {
-    return blob;
-  }
-
-  try {
-    const source = "createImageBitmap" in window
-      ? await createImageBitmap(
-          blob,
-          {
-            imageOrientation: "from-image",
-          } as ImageBitmapOptions,
-        )
-      : await new Promise<HTMLImageElement>((resolve, reject) => {
-          const imageUrl = URL.createObjectURL(blob);
-          const nextImage = new Image();
-          nextImage.onload = () => {
-            URL.revokeObjectURL(imageUrl);
-            resolve(nextImage);
-          };
-          nextImage.onerror = (error) => {
-            URL.revokeObjectURL(imageUrl);
-            reject(error);
-          };
-          nextImage.src = imageUrl;
-        });
-
-    const scale = Math.min(
-      1,
-      options.maxWidth / source.width,
-      options.maxHeight / source.height,
-    );
-
-    if (scale >= 1) {
-      return blob;
-    }
-
-    const canvas = document.createElement("canvas");
-    canvas.width = Math.round(source.width * scale);
-    canvas.height = Math.round(source.height * scale);
-    const context = canvas.getContext("2d");
-    if (!context) {
-      return blob;
-    }
-
-    context.drawImage(source, 0, 0, canvas.width, canvas.height);
-
-    const resizedBlob = await new Promise<Blob | null>((resolve) =>
-      canvas.toBlob(resolve, "image/jpeg", options.quality),
-    );
-
-    if ("close" in source && typeof source.close === "function") {
-      source.close();
-    }
-
-    return resizedBlob ?? blob;
-  } catch {
-    return blob;
-  }
-};
-
 const getPublicStorageUrl = (path: string, transform?: { width: number; quality: number }) => {
   const client = ensureClient();
   const { data } = client.storage.from(PHOTO_BUCKET).getPublicUrl(
@@ -144,12 +76,7 @@ const uploadPhotoAsset = async (
   }
 
   const client = ensureClient();
-  const originalBlob = await dataUrlToBlob(asset.url);
-  const blob = await resizeImageBlob(originalBlob, {
-    maxWidth: 1800,
-    maxHeight: 1800,
-    quality: 0.82,
-  });
+  const blob = await dataUrlToBlob(asset.url);
   const path = `${pathPrefix}/${crypto.randomUUID()}-${safeFileName(asset.name)}`;
   const { error } = await client.storage.from(PHOTO_BUCKET).upload(path, blob, {
     cacheControl: "31536000",
