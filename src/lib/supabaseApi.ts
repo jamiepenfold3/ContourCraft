@@ -62,19 +62,32 @@ const resizeImageBlob = async (
     return blob;
   }
 
-  const imageUrl = URL.createObjectURL(blob);
   try {
-    const image = await new Promise<HTMLImageElement>((resolve, reject) => {
-      const nextImage = new Image();
-      nextImage.onload = () => resolve(nextImage);
-      nextImage.onerror = reject;
-      nextImage.src = imageUrl;
-    });
+    const source = "createImageBitmap" in window
+      ? await createImageBitmap(
+          blob,
+          {
+            imageOrientation: "from-image",
+          } as ImageBitmapOptions,
+        )
+      : await new Promise<HTMLImageElement>((resolve, reject) => {
+          const imageUrl = URL.createObjectURL(blob);
+          const nextImage = new Image();
+          nextImage.onload = () => {
+            URL.revokeObjectURL(imageUrl);
+            resolve(nextImage);
+          };
+          nextImage.onerror = (error) => {
+            URL.revokeObjectURL(imageUrl);
+            reject(error);
+          };
+          nextImage.src = imageUrl;
+        });
 
     const scale = Math.min(
       1,
-      options.maxWidth / image.width,
-      options.maxHeight / image.height,
+      options.maxWidth / source.width,
+      options.maxHeight / source.height,
     );
 
     if (scale >= 1) {
@@ -82,22 +95,26 @@ const resizeImageBlob = async (
     }
 
     const canvas = document.createElement("canvas");
-    canvas.width = Math.round(image.width * scale);
-    canvas.height = Math.round(image.height * scale);
+    canvas.width = Math.round(source.width * scale);
+    canvas.height = Math.round(source.height * scale);
     const context = canvas.getContext("2d");
     if (!context) {
       return blob;
     }
 
-    context.drawImage(image, 0, 0, canvas.width, canvas.height);
+    context.drawImage(source, 0, 0, canvas.width, canvas.height);
 
     const resizedBlob = await new Promise<Blob | null>((resolve) =>
       canvas.toBlob(resolve, "image/jpeg", options.quality),
     );
 
+    if ("close" in source && typeof source.close === "function") {
+      source.close();
+    }
+
     return resizedBlob ?? blob;
-  } finally {
-    URL.revokeObjectURL(imageUrl);
+  } catch {
+    return blob;
   }
 };
 
