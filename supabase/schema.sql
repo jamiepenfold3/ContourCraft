@@ -6,6 +6,7 @@ create table if not exists public.profiles (
   full_name text not null,
   role text not null check (role in ('creator', 'viewer')) default 'viewer',
   wild_camping_access boolean not null default false,
+  email_opt_in boolean not null default false,
   avatar_photo_name text,
   avatar_url text,
   avatar_thumb_url text,
@@ -18,12 +19,13 @@ language plpgsql
 security definer
 as $$
 begin
-  insert into public.profiles (id, email, full_name, role, wild_camping_access)
+  insert into public.profiles (id, email, full_name, role, wild_camping_access, email_opt_in)
   values (
     new.id,
     new.email,
     coalesce(new.raw_user_meta_data ->> 'full_name', split_part(new.email, '@', 1)),
     'viewer',
+    false,
     false
   )
   on conflict (id) do update
@@ -426,6 +428,34 @@ alter table public.newsletter_subscribers enable row level security;
 create policy "public can add newsletter subscribers"
 on public.newsletter_subscribers for insert
 with check (true);
+
+create or replace view public.mailing_list as
+select
+  lower(trim(profiles.email)) as email,
+  profiles.full_name,
+  'account'::text as source,
+  true as is_account_holder,
+  profiles.email_opt_in,
+  profiles.created_at
+from public.profiles
+where profiles.email_opt_in = true
+
+union all
+
+select
+  lower(trim(newsletter_subscribers.email)) as email,
+  newsletter_subscribers.full_name,
+  newsletter_subscribers.source,
+  false as is_account_holder,
+  true as email_opt_in,
+  newsletter_subscribers.created_at
+from public.newsletter_subscribers
+where not exists (
+  select 1
+  from public.profiles
+  where lower(trim(profiles.email)) = lower(trim(newsletter_subscribers.email))
+    and profiles.email_opt_in = true
+);
 
 create table if not exists public.place_recommendations (
   place_id uuid not null references public.places(id) on delete cascade,

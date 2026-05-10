@@ -58,6 +58,7 @@ export type AppProfile = {
   fullName: string;
   role: ProfileRole;
   wildCampingAccess: boolean;
+  emailOptIn: boolean;
   avatarPhotoName?: string;
   avatarUrl?: string;
 };

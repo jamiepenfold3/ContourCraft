@@ -211,6 +211,63 @@ img {
   font-size: 1.1rem;
 }
 
+.custom-pin-wrapper {
+  background: transparent;
+  border: 0;
+}
+
+.map-pin-stack {
+  width: 144px;
+  display: grid;
+  justify-items: center;
+  gap: 6px;
+}
+
+.map-pin-label {
+  width: 100%;
+  padding: 0 6px;
+  text-align: center;
+  line-height: 1.15;
+  text-shadow:
+    0 1px 2px rgba(255, 255, 255, 0.95),
+    0 0 10px rgba(255, 255, 255, 0.85);
+}
+
+.map-pin-label strong,
+.map-pin-label span {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.map-pin-label strong {
+  font-size: 0.78rem;
+  color: #183528;
+}
+
+.map-pin-label span {
+  margin-top: 2px;
+  font-size: 0.68rem;
+  color: var(--text-soft);
+}
+
+.satellite-mode .map-pin-label strong,
+.satellite-mode .map-pin-label span {
+  color: #ffffff;
+  text-shadow:
+    0 1px 3px rgba(0, 0, 0, 0.95),
+    0 0 14px rgba(0, 0, 0, 0.72);
+}
+
+.standard-mode .map-pin-label strong {
+  color: #183528;
+}
+
+.standard-mode .map-pin-label span {
+  color: var(--text-soft);
+}
+
 .event-list {
   display: grid;
   gap: 10px;

@@ -83,7 +83,8 @@ alter table if exists public.places
 alter table if exists public.profiles
   add column if not exists avatar_photo_name text,
   add column if not exists avatar_url text,
-  add column if not exists avatar_thumb_url text;
+  add column if not exists avatar_thumb_url text,
+  add column if not exists email_opt_in boolean not null default false;
 
 alter table if exists public.place_comments
   add column if not exists profile_id uuid references public.profiles(id) on delete set null,
@@ -252,6 +253,34 @@ drop policy if exists "public can add newsletter subscribers" on public.newslett
 create policy "public can add newsletter subscribers"
 on public.newsletter_subscribers for insert
 with check (true);
+
+create or replace view public.mailing_list as
+select
+  lower(trim(profiles.email)) as email,
+  profiles.full_name,
+  'account'::text as source,
+  true as is_account_holder,
+  profiles.email_opt_in,
+  profiles.created_at
+from public.profiles
+where profiles.email_opt_in = true
+
+union all
+
+select
+  lower(trim(newsletter_subscribers.email)) as email,
+  newsletter_subscribers.full_name,
+  newsletter_subscribers.source,
+  false as is_account_holder,
+  true as email_opt_in,
+  newsletter_subscribers.created_at
+from public.newsletter_subscribers
+where not exists (
+  select 1
+  from public.profiles
+  where lower(trim(profiles.email)) = lower(trim(newsletter_subscribers.email))
+    and profiles.email_opt_in = true
+);
 
 create table if not exists public.place_recommendations (
   place_id uuid not null references public.places(id) on delete cascade,

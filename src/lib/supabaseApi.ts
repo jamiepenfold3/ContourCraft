@@ -128,6 +128,7 @@ const mapProfile = (row: any): AppProfile => ({
   fullName: row.full_name ?? "Unknown",
   role: row.role,
   wildCampingAccess: Boolean(row.wild_camping_access),
+  emailOptIn: Boolean(row.email_opt_in),
   avatarPhotoName: row.avatar_photo_name ?? undefined,
   avatarUrl: row.avatar_thumb_url ?? row.avatar_url ?? undefined,
 });
@@ -258,7 +259,7 @@ export async function getProfile(userId: string) {
   const client = ensureClient();
   const { data, error } = await client
     .from("profiles")
-    .select("id, email, full_name, role, wild_camping_access, avatar_photo_name, avatar_url, avatar_thumb_url")
+    .select("id, email, full_name, role, wild_camping_access, email_opt_in, avatar_photo_name, avatar_url, avatar_thumb_url")
     .eq("id", userId)
     .single();
 
@@ -276,6 +277,7 @@ export async function signUpViewer(
   fullName: string,
   email: string,
   password: string,
+  emailOptIn: boolean,
 ) {
   const client = ensureClient();
   const { data, error } = await client.auth.signUp({
@@ -298,6 +300,7 @@ export async function signUpViewer(
       full_name: fullName,
       role: "viewer",
       wild_camping_access: false,
+      email_opt_in: emailOptIn,
       avatar_photo_name: null,
       avatar_url: null,
       avatar_thumb_url: null,
@@ -334,7 +337,22 @@ export async function updateProfilePhoto(
       avatar_thumb_url: uploadedPhoto?.thumbUrl ?? null,
     })
     .eq("id", userId)
-    .select("id, email, full_name, role, wild_camping_access, avatar_photo_name, avatar_url, avatar_thumb_url")
+    .select("id, email, full_name, role, wild_camping_access, email_opt_in, avatar_photo_name, avatar_url, avatar_thumb_url")
+    .single();
+
+  if (error) throw error;
+  return mapProfile(data);
+}
+
+export async function updateProfileEmailOptIn(userId: string, emailOptIn: boolean) {
+  const client = ensureClient();
+  const { data, error } = await client
+    .from("profiles")
+    .update({
+      email_opt_in: emailOptIn,
+    })
+    .eq("id", userId)
+    .select("id, email, full_name, role, wild_camping_access, email_opt_in, avatar_photo_name, avatar_url, avatar_thumb_url")
     .single();
 
   if (error) throw error;

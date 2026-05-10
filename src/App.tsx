@@ -31,6 +31,7 @@ import {
   signUpViewer,
   trackEvent,
   updatePlace,
+  updateProfileEmailOptIn,
   updateProfilePhoto,
 } from "./lib/supabaseApi";
 import { isSupabaseConfigured } from "./lib/supabase";
@@ -268,7 +269,6 @@ export default function App() {
   });
   const [searchMode, setSearchMode] = useState<"tags" | "title">("tags");
   const [searchTerm, setSearchTerm] = useState("");
-  const [selectedTag, setSelectedTag] = useState("all");
   const [error, setError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(isSupabaseConfigured);
   const [loadingDetailPlaceIds, setLoadingDetailPlaceIds] = useState<Set<string>>(
@@ -656,23 +656,13 @@ export default function App() {
     );
   }, [mapFilters, visibleEvents]);
 
-  const allTags = useMemo(
-    () =>
-      Array.from(new Set(mapFilteredEvents.flatMap((event) => event.tags))).sort((left, right) =>
-        left.localeCompare(right),
-      ),
-    [mapFilteredEvents],
-  );
-
   const filteredEvents = useMemo(() => {
     const term = searchTerm.trim().toLowerCase();
     return mapFilteredEvents.filter((event) => {
       if (searchMode === "tags") {
-        const tagMatches = selectedTag === "all" ? true : event.tags.includes(selectedTag);
-        const keywordMatches = !term
+        return !term
           ? true
           : event.tags.some((tag) => tag.toLowerCase().includes(term));
-        return tagMatches && keywordMatches;
       }
 
       return !term
@@ -682,7 +672,7 @@ export default function App() {
             .toLowerCase()
             .includes(term);
     });
-  }, [mapFilteredEvents, searchMode, searchTerm, selectedTag]);
+  }, [mapFilteredEvents, searchMode, searchTerm]);
 
   const previewEvents = useMemo(() => filteredEvents.slice(0, 10), [filteredEvents]);
 
@@ -916,10 +906,7 @@ export default function App() {
     password: string,
     newsletterOptIn: boolean,
   ) => {
-    const result = await signUpViewer(fullName, email, password);
-    if (newsletterOptIn) {
-      await addNewsletterSubscriber(fullName, email, "signup");
-    }
+    const result = await signUpViewer(fullName, email, password, newsletterOptIn);
     if (!result.requiresEmailConfirmation) {
       setShowAuth(false);
     }
@@ -1079,7 +1066,12 @@ export default function App() {
       return;
     }
     if (comment.newsletterOptIn) {
-      await addNewsletterSubscriber(comment.name, comment.email, "comment");
+      if (profile) {
+        const nextProfile = await updateProfileEmailOptIn(profile.id, true);
+        setProfile(nextProfile);
+      } else {
+        await addNewsletterSubscriber(comment.name, comment.email, "comment");
+      }
     }
     const inserted = await addComment(eventId, {
       ...comment,
@@ -1134,7 +1126,7 @@ export default function App() {
         <div className="hero-topbar">
           <div>
             <p className="eyebrow">ContourCraft</p>
-            <h1>A place to find weekend getaway spots with your favourite interests such as Wine Tastings, Breweries, Trail Running, hiking, Swim Spots and Food Spots</h1>
+            <h1>Find your next weekend getaway</h1>
           </div>
           <MenuDropdown
             profile={profile}
@@ -1247,36 +1239,26 @@ export default function App() {
                   onChange={(event) => setSearchTerm(event.target.value)}
                   placeholder={
                     searchMode === "tags"
-                      ? "Search tags or interests"
-                      : "Search headings or place names"
+                      ? "Search a tag e.g mountain biking"
+                      : "Search for a place e.g Cederberg"
                   }
                 />
-                <button
-                  type="button"
-                  className="icon-button search-toggle"
-                  onClick={() =>
-                    setSearchMode((current) => (current === "tags" ? "title" : "tags"))
-                  }
-                >
-                  {searchMode === "tags" ? "Tags" : "Headings"}
-                </button>
-              </div>
-              <div className="search-row">
-                <select
-                  value={selectedTag}
-                  onChange={(event) => setSelectedTag(event.target.value)}
-                  disabled={searchMode !== "tags"}
-                >
-                  <option value="all">All #tags</option>
-                  {allTags.map((tag) => (
-                    <option key={tag} value={tag}>
-                      {tag}
-                    </option>
-                  ))}
-                </select>
-                <small className="search-helper">
-                  Wild camping results only appear for paid-access viewers or creators.
-                </small>
+                <div className="auth-toggle-row search-mode-toggle">
+                  <button
+                    type="button"
+                    className={`toggle-chip ${searchMode === "tags" ? "active" : ""}`}
+                    onClick={() => setSearchMode("tags")}
+                  >
+                    Tags
+                  </button>
+                  <button
+                    type="button"
+                    className={`toggle-chip ${searchMode === "title" ? "active" : ""}`}
+                    onClick={() => setSearchMode("title")}
+                  >
+                    Places
+                  </button>
+                </div>
               </div>
             </section>
           ) : null}
@@ -1355,6 +1337,7 @@ export default function App() {
               isLoadingDetails={loadingDetailPlaceIds.has(selectedEvent.id)}
               isLoadingExtras={loadingExtraPlaceIds.has(selectedEvent.id)}
               isLoadingComments={loadingCommentPlaceIds.has(selectedEvent.id)}
+              showNewsletterOptIn={!profile || !profile.emailOptIn}
             />
           ) : null}
 

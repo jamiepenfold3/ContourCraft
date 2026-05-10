@@ -3,7 +3,6 @@ import { DivIcon, LeafletMouseEvent } from "leaflet";
 import {
   MapContainer,
   Marker,
-  Popup,
   TileLayer,
   useMap,
   useMapEvents,
@@ -24,6 +23,8 @@ type MapViewProps = {
   onPickLocation: (point: Point) => void;
 };
 
+const LABEL_ZOOM_THRESHOLD = 9;
+
 const pinIcon = new DivIcon({
   className: "custom-pin-wrapper",
   html: '<div class="custom-pin"></div>',
@@ -38,19 +39,30 @@ const draftPinIcon = new DivIcon({
   iconAnchor: [12, 24],
 });
 
-const eventIcon = (event: AdventureEvent) =>
+const eventIcon = (event: AdventureEvent, showLabel: boolean) =>
   new DivIcon({
     className: "custom-pin-wrapper",
-    html: `<div class="emoji-pin">${
-      event.placeType !== "non-camping" ||
-      event.categories.some((category) => category.key === "campsite")
-        ? "🏕️"
-        : event.categories.some((category) => category.key === "accommodation")
-          ? "🏠"
-          : "📍"
-    }</div>`,
-    iconSize: [34, 34],
-    iconAnchor: [17, 34],
+    html: `<div class="map-pin-stack">
+      ${
+        showLabel
+          ? `<div class="map-pin-label">
+        <strong>${event.title}</strong>
+        <span>${event.locationName}</span>
+      </div>`
+          : ""
+      }
+      <div class="emoji-pin">${
+        event.placeType !== "non-camping" ||
+        event.categories.some((category) => category.key === "campsite")
+          ? "🏕️"
+          : event.categories.some((category) => category.key === "accommodation")
+            ? "🏠"
+            : "📍"
+      }</div>
+    </div>`,
+    iconSize: [144, 72],
+    iconAnchor: [72, 72],
+    popupAnchor: [0, -56],
   });
 
 const FlyToSelection = ({
@@ -101,6 +113,24 @@ const CreateLocationEvents = ({
   return null;
 };
 
+const ZoomLevelWatcher = ({
+  onZoomChange,
+}: {
+  onZoomChange: (zoom: number) => void;
+}) => {
+  const map = useMapEvents({
+    zoomend() {
+      onZoomChange(map.getZoom());
+    },
+  });
+
+  useEffect(() => {
+    onZoomChange(map.getZoom());
+  }, [map, onZoomChange]);
+
+  return null;
+};
+
 const MapSizeInvalidator = ({
   tileMode,
   eventCount,
@@ -132,7 +162,10 @@ export function MapView({
   draftPoint,
   onPickLocation,
 }: MapViewProps) {
-  const [tileMode, setTileMode] = useState<"standard" | "satellite">("standard");
+  const [tileMode, setTileMode] = useState<"standard" | "satellite">("satellite");
+  const defaultZoom = window.innerWidth < 860 ? 6 : 7;
+  const [currentZoom, setCurrentZoom] = useState(defaultZoom);
+  const showLabels = currentZoom >= LABEL_ZOOM_THRESHOLD;
   const tileLayer =
     tileMode === "standard"
       ? {
@@ -147,10 +180,10 @@ export function MapView({
         };
 
   return (
-    <div className="map-shell">
+    <div className={`map-shell ${tileMode}-mode`}>
       <MapContainer
         center={[-33.92, 18.42]}
-        zoom={7}
+        zoom={defaultZoom}
         scrollWheelZoom
         className="map-canvas"
       >
@@ -164,6 +197,7 @@ export function MapView({
           eventCount={events.length}
           creationMode={creationMode}
         />
+        <ZoomLevelWatcher onZoomChange={setCurrentZoom} />
         <FlyToSelection
           events={events}
           selectedEventId={selectedEventId}
@@ -177,25 +211,17 @@ export function MapView({
           <Marker
             key={event.id}
             position={[event.lat, event.lng]}
-            icon={eventIcon(event)}
+            icon={eventIcon(event, showLabels)}
             eventHandlers={{
               click: () => onSelectEvent(event.id),
             }}
-          >
-            <Popup>
-              <strong>{event.title}</strong>
-              <br />
-              {event.locationName}
-            </Popup>
-          </Marker>
+          />
         ))}
         {draftPoint ? (
           <Marker
             position={[draftPoint.lat, draftPoint.lng]}
             icon={draftPinIcon}
-          >
-            <Popup>New location draft</Popup>
-          </Marker>
+          />
         ) : null}
       </MapContainer>
       <div className="map-overlay">

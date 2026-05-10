@@ -20,13 +20,14 @@ type EventDetailProps = {
   isLoadingDetails: boolean;
   isLoadingExtras: boolean;
   isLoadingComments: boolean;
+  showNewsletterOptIn: boolean;
 };
 
 const sectionLabels: Partial<Record<CategoryKey, string>> = {
   campsite: "Campsite",
   accommodation: "Non-camping",
-  trails: "Trail run / hike 1",
-  trails_2: "Trail run / hike 2",
+  trails: "Trail run / hike",
+  trails_2: "Trail run / hike",
   eating_out: "Eating out",
   eating_in: "Eating in",
   wine_tasting: "Wine tasting",
@@ -69,6 +70,7 @@ export function EventDetail({
   isLoadingDetails,
   isLoadingExtras,
   isLoadingComments,
+  showNewsletterOptIn,
 }: EventDetailProps) {
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
@@ -307,14 +309,16 @@ export function EventDetail({
               onChange={(event) => setMessage(event.target.value)}
             />
           </label>
-          <label className="inline-checkbox">
-            <input
-              type="checkbox"
-              checked={newsletterOptIn}
-              onChange={(event) => setNewsletterOptIn(event.target.checked)}
-            />
-            <span>Email me new exciting camp spots</span>
-          </label>
+          {showNewsletterOptIn ? (
+            <label className="inline-checkbox">
+              <input
+                type="checkbox"
+                checked={newsletterOptIn}
+                onChange={(event) => setNewsletterOptIn(event.target.checked)}
+              />
+              <span>Email me new exciting camp spots</span>
+            </label>
+          ) : null}
           <button type="submit" className="primary-button">
             Add comment
           </button>

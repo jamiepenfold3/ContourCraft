@@ -121,7 +121,7 @@ export function AuthSheet({
               ? "Creator access enabled. You can publish places and view analytics from the menu."
               : profile.wildCampingAccess
                 ? "Wild camping access enabled on this account."
-                : "Viewer account active. Wild camping remains locked until access is granted."}
+                : "Viewer account active. Wild camping remains locked until it is enabled on your profile."}
           </p>
         </div>
         <label>
@@ -199,7 +199,7 @@ export function AuthSheet({
           type="email"
           value={email}
           onChange={(event) => setEmail(event.target.value)}
-          placeholder="jamie@example.com"
+          placeholder="yourname@email.com"
         />
       </label>
       <label>
@@ -213,7 +213,7 @@ export function AuthSheet({
       </label>
 
       <p className="guest-copy">
-        Everyone logs in here. Creator access and paid wild camping access are controlled on
+        Everyone logs in here. Creator access and wild camping access are controlled on
         your Supabase profile after the account exists.
       </p>
 
